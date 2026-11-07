@@ -42,6 +42,21 @@ ctest --preset debug
 tools/validate.sh debug
 ```
 
+## Offline rendering (rs-render)
+
+Runs an fx-core effect over a WAV file, the same way a DAW would (block by
+block), and writes a latency-compensated 32-bit float WAV that lines up
+sample-for-sample with the input. Use it for A/B listening and null tests.
+
+```bash
+R=build/debug/tools/render/rs-render_artefacts/Debug/rs-render
+$R --list                                   # effects and their parameters
+$R gain di.wav out.wav db=-6                # name=value parameters
+$R gain di.wav out.wav --block=64 --24bit   # host block size, 24-bit output
+```
+
+New effects are added to the registry at the top of `tools/render/Main.cpp`.
+
 The build copies the plugin to `~/Library/Audio/Plug-Ins/VST3` and `.../Components` automatically, so DAWs see it after a rescan.
 
 ## First run in AudioPluginHost
@@ -55,9 +70,12 @@ Breakpoints in `plugins/` and `fx-core/` hit inside the host.
 
 ## Layout
 
-- `fx-core/` — DSP only, no JUCE plugin code; linked by plugins and RoughTrack
+- `fx-core/` — DSP only, plain C++20 with no JUCE dependency; linked by plugins and RoughTrack
+  - `Smoother.h`, `Filters.h`, `Waveshapers.h`, `Oversampler.h` — shared building blocks
+  - `effects/` — complete effects implementing `fx::Effect`
 - `plugins/Overdrive/` — JUCE wrapper (parameters, state, editor)
 - `tools/validate.sh` — pluginval runner
+- `tools/render/` — rs-render offline renderer
 
 ## Using fx-core in RoughTrack
 
@@ -68,4 +86,4 @@ add_subdirectory(path/to/roughstomp/fx-core fx-core)
 target_link_libraries(RoughTrack PRIVATE fx::core)
 ```
 
-Set `ROUGHSTOMP_BUILD_TESTS=OFF` in RoughTrack's build to skip the tests.
+fx-core's tests are only built when `ROUGHSTOMP_BUILD_TESTS` is ON, which it isn't inside RoughTrack, so nothing else is needed.

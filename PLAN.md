@@ -70,7 +70,7 @@ roughstomp/
 
 **Goal:** the building blocks every pedal will reuse.
 
-- [ ] `Effect` interface:
+- [x] `Effect` interface:
   ```cpp
   struct Effect {
       virtual void prepare(double sampleRate, int maxBlockSize, int numChannels) = 0;
@@ -80,12 +80,12 @@ roughstomp/
       virtual ~Effect() = default;
   };
   ```
-- [ ] Parameter smoother (linear and one-pole)
-- [ ] Oversampler wrapper (wrap `juce::dsp::Oversampling` or roll your own polyphase), 2x/4x/8x, reports latency
-- [ ] Filters: one-pole LP/HP, biquad (RBJ cookbook), DC blocker
-- [ ] Waveshapers: `tanh`, soft clip (cubic), hard clip, asymmetric diode-style
-- [ ] Catch2 tests: filter frequency response, DC blocker removes offset, smoother converges, oversampler round-trip
-- [ ] `tools/render`: CLI that runs an effect over a WAV file with given parameters → output WAV (great for A/B comparisons and regression tests)
+- [x] Parameter smoother (linear and one-pole)
+- [x] Oversampler: own polyphase halfband FIR cascade (keeps fx-core JUCE-free so RoughTrack can link it without a second copy of JUCE), 2x/4x/8x, reports latency
+- [x] Filters: one-pole LP/HP, biquad (RBJ cookbook), DC blocker
+- [x] Waveshapers: `tanh`, soft clip (cubic), hard clip, asymmetric diode-style
+- [x] Catch2 tests: filter frequency response, DC blocker removes offset, smoother converges, oversampler round-trip
+- [x] `tools/render`: CLI that runs an effect over a WAV file with given parameters → output WAV (great for A/B comparisons and regression tests)
 
 **Done when:** tests pass and the render tool can process a DI guitar file.
 

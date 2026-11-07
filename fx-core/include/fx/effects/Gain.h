@@ -1,13 +1,12 @@
 #pragma once
 
 #include "fx/Effect.h"
+#include "fx/Smoother.h"
 
 namespace fx
 {
 
-/** Phase 0 placeholder: a smoothed gain stage. At 0 dB it is a clean
-    pass-through, which proves the whole build and host pipeline works.
-    Phase 1 replaces the inline ramp with the shared Smoother. */
+/** Smoothed gain stage. At 0 dB it is a bit-exact pass-through. */
 class Gain final : public Effect
 {
 public:
@@ -18,13 +17,10 @@ public:
     /** Safe to call from the audio thread at the start of each block. */
     void setGainDecibels (float dB) noexcept;
 
-    float getCurrentGain() const noexcept { return current; }
+    float getCurrentGain() const noexcept { return gain.getCurrent(); }
 
 private:
-    double sampleRate = 44100.0;
-    float  target  = 1.0f;
-    float  current = 1.0f;
-    int    rampSamples = 0;   // length of a full ramp, set in prepare()
+    LinearSmoother gain { 1.0f };   // 20 ms ramps
 };
 
 } // namespace fx
