@@ -1,0 +1,45 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug in AudioPluginHost",
+      "type": "lldb",
+      "request": "launch",
+      "program": "${workspaceFolder}/build/debug/host/AudioPluginHost_artefacts/Debug/AudioPluginHost.app/Contents/MacOS/AudioPluginHost",
+      "cwd": "${workspaceFolder}",
+      "preLaunchTask": "Build (Debug)"
+    },
+    {
+      "name": "Debug Standalone",
+      "type": "lldb",
+      "request": "launch",
+      "program": "${workspaceFolder}/build/debug/plugins/Overdrive/Overdrive_artefacts/Debug/Standalone/RoughStomp Overdrive.app/Contents/MacOS/RoughStomp Overdrive",
+      "cwd": "${workspaceFolder}",
+      "preLaunchTask": "Build (Debug)"
+    },
+    {
+      "name": "Debug in RoughTrack",
+      "type": "lldb",
+      "request": "launch",
+      "program": "${input:roughTrackPath}",
+      "cwd": "${workspaceFolder}",
+      "preLaunchTask": "Build (Debug)"
+    },
+    {
+      "name": "Debug fx-core tests",
+      "type": "lldb",
+      "request": "launch",
+      "program": "${workspaceFolder}/build/debug/fx-core/fx-core-tests",
+      "cwd": "${workspaceFolder}",
+      "preLaunchTask": "Build (Debug)"
+    }
+  ],
+  "inputs": [
+    {
+      "id": "roughTrackPath",
+      "type": "promptString",
+      "description": "Path to the RoughTrack executable (inside the .app: Contents/MacOS/RoughTrack)",
+      "default": "${env:HOME}/Documents/dev/8track/build/debug/app/RoughTrack_artefacts/Debug/RoughTrack.app/Contents/MacOS/RoughTrack"
+    }
+  ]
+}
