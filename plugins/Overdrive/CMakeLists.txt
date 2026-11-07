@@ -15,6 +15,8 @@ juce_add_plugin(Overdrive
     VST3_CATEGORIES          Fx Distortion)
 
 target_sources(Overdrive PRIVATE
+    Source/PluginEditor.cpp
+    Source/PluginEditor.h
     Source/PluginProcessor.cpp
     Source/PluginProcessor.h)
 

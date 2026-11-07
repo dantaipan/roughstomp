@@ -10,6 +10,7 @@
 #include <juce_audio_formats/juce_audio_formats.h>
 
 #include "fx/effects/Gain.h"
+#include "fx/effects/Overdrive.h"
 
 #include <functional>
 #include <iostream>
@@ -43,6 +44,17 @@ const std::map<juce::String, EffectInfo>& registry()
                         g->setGainDecibels (param (p, "db", 0.0f));
                         return g;
                     } } },
+        { "overdrive", { "drive=<0..10> tone=<0..10> level=<dB> mix=<0..100>  (defaults 5 5 0 100)",
+                         [] (const Params& p)
+                         {
+                             auto od = std::make_unique<fx::Overdrive>();
+                             od->setParameters ({ param (p, "drive", 5.0f) / 10.0f,
+                                                  param (p, "tone", 5.0f) / 10.0f,
+                                                  param (p, "level", 0.0f),
+                                                  param (p, "mix", 100.0f) / 100.0f,
+                                                  false });
+                             return od;
+                         } } },
     };
     return effects;
 }

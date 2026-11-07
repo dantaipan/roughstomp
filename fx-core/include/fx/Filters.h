@@ -24,9 +24,18 @@ public:
     void setup (Mode newMode, double sampleRate, double cutoffHz) noexcept
     {
         mode = newMode;
-        const double g = std::tan (std::numbers::pi * cutoffHz / sampleRate);
-        G = g / (1.0 + g);
+        G = coefficient (sampleRate, cutoffHz);
     }
+
+    /** For sweeping the cutoff per sample: compute coefficients ahead of
+        time with coefficient(), then apply them with setCoefficient(). */
+    static double coefficient (double sampleRate, double cutoffHz) noexcept
+    {
+        const double g = std::tan (std::numbers::pi * cutoffHz / sampleRate);
+        return g / (1.0 + g);
+    }
+
+    void setCoefficient (double newG) noexcept { G = newG; }
 
     void reset() noexcept { s = 0.0; }
 

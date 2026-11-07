@@ -2,10 +2,20 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 
-#include "fx/effects/Gain.h"
+#include "fx/effects/Overdrive.h"
 
-/** Phase 0: pass-through wrapper around fx::Gain.
-    Parameters live here; the DSP lives in fx-core. */
+namespace ParamIDs
+{
+    // Stable once released: presets and host automation depend on these
+    inline const juce::ParameterID drive  { "drive",  1 };
+    inline const juce::ParameterID tone   { "tone",   1 };
+    inline const juce::ParameterID level  { "level",  1 };
+    inline const juce::ParameterID mix    { "mix",    1 };
+    inline const juce::ParameterID bypass { "bypass", 1 };
+}
+
+/** Plugin wrapper: owns the parameters and presets, and pushes values into
+    fx::Overdrive each block. The DSP lives in fx-core. */
 class OverdriveProcessor final : public juce::AudioProcessor
 {
 public:
@@ -19,6 +29,10 @@ public:
     void processBlock (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
     using AudioProcessor::processBlock;
 
+    // Our bypass parameter doubles as the host's bypass button, so host
+    // bypass gets the same click-free crossfade and constant latency
+    juce::AudioProcessorParameter* getBypassParameter() const override { return bypass; }
+
     // Editor
     juce::AudioProcessorEditor* createEditor() override;
     bool hasEditor() const override { return true; }
@@ -30,11 +44,11 @@ public:
     bool isMidiEffect() const override { return false; }
     double getTailLengthSeconds() const override { return 0.0; }
 
-    // Programs (unused)
-    int getNumPrograms() override { return 1; }
-    int getCurrentProgram() override { return 0; }
-    void setCurrentProgram (int) override {}
-    const juce::String getProgramName (int) override { return {}; }
+    // Factory presets
+    int getNumPrograms() override;
+    int getCurrentProgram() override { return currentProgram; }
+    void setCurrentProgram (int index) override;
+    const juce::String getProgramName (int index) override;
     void changeProgramName (int, const juce::String&) override {}
 
     // State
@@ -46,8 +60,14 @@ public:
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createLayout();
 
+    juce::AudioParameterFloat* drive = nullptr;
+    juce::AudioParameterFloat* tone  = nullptr;
     juce::AudioParameterFloat* level = nullptr;
-    fx::Gain gain;
+    juce::AudioParameterFloat* mix   = nullptr;
+    juce::AudioParameterBool*  bypass = nullptr;
+
+    int currentProgram = 0;
+    fx::Overdrive overdrive;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (OverdriveProcessor)
 };

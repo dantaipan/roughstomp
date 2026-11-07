@@ -97,19 +97,23 @@ roughstomp/
 
 Signal flow:
 ```
-in → input HPF (~720 Hz-ish tilt, mid emphasis) → drive gain
-   → [oversample ×4] → soft clipper → [downsample]
-   → tone (LPF, ~1–5 kHz sweep) → DC blocker → level → out
+in → [oversample ×8] → drive (boost above ~720 Hz, lows at unity) → pre-clip LPF 7 kHz
+   → tanh soft clipper (threshold -12 dBFS) → tone (1-pole LPF, 600 Hz–8 kHz)
+   → fizz LPF 10 kHz → DC blocker → makeup + level → clean blend
+   → bypass crossfade → [downsample] → out
+(blend and bypass run oversampled too, so dry/wet stay time-aligned and latency is constant)
 ```
 
-- [ ] Parameters (`AudioProcessorValueTreeState`): Drive, Tone, Level, Bypass
-- [ ] Drive mapped on a log/audio taper; gain range roughly 0–40 dB
-- [ ] Clean-blend/Mix parameter (optional, useful for bass)
-- [ ] Click-free bypass (short crossfade)
-- [ ] Report oversampler latency to host
-- [ ] Basic generic editor first, then a simple pedal GUI (3 knobs + footswitch + LED)
-- [ ] State save/restore; 3–5 factory presets
-- [ ] Test: aliasing check with a high-frequency sine sweep (spectrum should stay clean), CPU usage per instance, pluginval pass
+- [x] Parameters (`AudioProcessorValueTreeState`): Drive, Tone, Level, Bypass
+- [x] Drive mapped on a log/audio taper; gain range roughly 0–40 dB
+- [x] Clean-blend/Mix parameter (optional, useful for bass)
+- [x] Click-free bypass (short crossfade)
+- [x] Report oversampler latency to host
+- [x] Basic generic editor first, then a simple pedal GUI (3 knobs + footswitch + LED)
+- [x] State save/restore; 3–5 factory presets
+- [x] Test: aliasing check with a high-frequency sine sweep (spectrum should stay clean), CPU usage per instance, pluginval pass
+
+- [x] Automatic makeup gain (-1 dB per 4 dB of drive) so loudness stays within ~1 dB of bypass
 
 **Done when:** it sounds musical on DI guitar into an amp sim, has no clicks or aliasing hash, and passes pluginval.
 

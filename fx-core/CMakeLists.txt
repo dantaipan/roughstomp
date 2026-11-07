@@ -1,6 +1,7 @@
 add_library(fx-core STATIC
     src/Oversampler.cpp
     src/effects/Gain.cpp
+    src/effects/Overdrive.cpp
 )
 add_library(fx::core ALIAS fx-core)
 
@@ -34,6 +35,7 @@ if(ROUGHSTOMP_BUILD_TESTS)
     add_executable(fx-core-tests
         tests/FilterTests.cpp
         tests/GainTests.cpp
+        tests/OverdriveTests.cpp
         tests/OversamplerTests.cpp
         tests/SmootherTests.cpp
         tests/WaveshaperTests.cpp

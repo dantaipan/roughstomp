@@ -59,6 +59,13 @@ New effects are added to the registry at the top of `tools/render/Main.cpp`.
 
 The build copies the plugin to `~/Library/Audio/Plug-Ins/VST3` and `.../Components` automatically, so DAWs see it after a rescan.
 
+If an AU's name or manufacturer changes but hosts keep showing the old one, macOS's AU registry is stale (`auval -a | grep Rstm` shows what it has). Clear it and rescan:
+
+```bash
+rm ~/Library/Caches/AudioUnitCache/com.apple.audiounits*.cache
+killall -9 AudioComponentRegistrar
+```
+
 ## First run in AudioPluginHost
 
 1. F5 with *Debug in AudioPluginHost*
