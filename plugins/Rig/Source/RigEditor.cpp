@@ -271,8 +271,14 @@ void RigEditor::timerCallback()
 
 void RigEditor::refreshPanels()
 {
-    ampPanel.show   (rigProcessor.getAmpFile (rig::AmpStage::amp),   rigProcessor.getAmpProblem (rig::AmpStage::amp));
-    powerPanel.show (rigProcessor.getAmpFile (rig::AmpStage::power), rigProcessor.getAmpProblem (rig::AmpStage::power));
+    // While a capture loads in the background, show its name
+    auto ampFile = [this] (rig::AmpStage s)
+    {
+        const auto loading = rigProcessor.getLoadingAmpFile (s);
+        return loading != juce::File() ? loading : rigProcessor.getAmpFile (s);
+    };
+    ampPanel.show   (ampFile (rig::AmpStage::amp),   rigProcessor.getAmpProblem (rig::AmpStage::amp));
+    powerPanel.show (ampFile (rig::AmpStage::power), rigProcessor.getAmpProblem (rig::AmpStage::power));
     cabPanel.show   (rigProcessor.getCabinetFile(),                  rigProcessor.getCabinetProblem());
 }
 
@@ -288,9 +294,17 @@ void RigEditor::chooseAmp (rig::AmpStage stage)
                                   return;
                               lastFolder = file.getParentDirectory();
 
-                              if (const auto error = rigProcessor.loadAmp (stage, file); error.isNotEmpty())
-                                  juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon,
-                                                                          "Couldn't load " + file.getFileName(), error);
+                              // In the background: big captures take a moment
+                              juce::Component::SafePointer<RigEditor> safe (this);
+                              rigProcessor.loadAmpAsync (stage, file, RigProcessor::AmpLoad::keepOld,
+                                                         [safe, file] (const juce::String& error)
+                              {
+                                  if (error.isNotEmpty())
+                                      juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon,
+                                                                              "Couldn't load " + file.getFileName(), error);
+                                  if (safe != nullptr)
+                                      safe->refreshPanels();
+                              });
                               refreshPanels();
                           });
 }

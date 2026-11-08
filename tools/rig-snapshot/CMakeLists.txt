@@ -17,7 +17,8 @@ target_compile_definitions(rs-rig-snapshot PRIVATE
     JucePlugin_Name="RoughStomp"
     JUCE_WEB_BROWSER=0
     JUCE_USE_CURL=0
-    JUCE_DISABLE_JUCE_VERSION_PRINTING=1)
+    JUCE_DISABLE_JUCE_VERSION_PRINTING=1
+    JUCE_MODAL_LOOPS_PERMITTED=1)   # to pump messages while checking background loads
 
 target_link_libraries(rs-rig-snapshot
     PRIVATE

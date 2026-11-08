@@ -10,6 +10,7 @@ Plugins (VST3, AU and a standalone app each):
 
 - **Pedals:** pick a pedal from the menu above a slot. Footswitch = on/off. Six slots before the amp, six in the FX loop. Any pedal goes in any slot:
   - *Overdrive*, *Boost*: for in front of the amp
+  - *Fuzz* (lower *Bias* for a gated, sputtering sound), *Big Fuzz* (long sustain, scooped tone), *Clean Drive* (keeps the guitar's own sound; *Gain* brings in more grit)
   - *EQ*: 7-band graphic EQ (100 Hz to 6.4 kHz, ±15 dB) and level, on sliders, with its curve drawn behind them
   - *Chorus*: 1–3 voices, stereo width
   - *Tremolo*: sine, triangle or square; *Spread* pans it across the sides (100% = auto-pan)
@@ -73,6 +74,20 @@ ctest --preset debug
 tools/validate.sh debug
 ```
 
+### Regression renders
+
+`fx-core-tests "[regression]"` runs every pedal, at its defaults and pushed
+hard, over a fixed synthetic guitar part and compares a fingerprint of the
+result (energy in five bands per 2048 samples, per channel) with the
+reference in `fx-core/tests/regression/` to within 0.1 dB. Any audible change
+to a pedal fails it and says where. After an intended change (or a new pedal),
+rewrite the references and review the diff:
+
+```bash
+RS_UPDATE_REGRESSION=1 build/release/fx-core/fx-core-tests "[regression]"
+git diff fx-core/tests/regression
+```
+
 ## Offline rendering (rs-render)
 
 Runs an fx-core effect over a WAV file, the same way a DAW would (block by
@@ -81,12 +96,13 @@ sample-for-sample with the input. Use it for A/B listening and null tests.
 
 ```bash
 R=build/debug/tools/render/rs-render_artefacts/Debug/rs-render
-$R --list                                   # effects and their parameters
-$R gain di.wav out.wav db=-6                # name=value parameters
-$R gain di.wav out.wav --block=64 --24bit   # host block size, 24-bit output
+$R --list                                        # every pedal and its controls
+$R delay di.wav out.wav time=380 feedback=30     # a pedal, controls by id in their own units
+$R tremolo di.wav out.wav sync=3 --bpm=96        # synced pedals follow --bpm (default 120)
+$R gain di.wav out.wav --block=64 --24bit        # host block size, 24-bit output
 ```
 
-New effects are added to the registry at the top of `tools/render/Main.cpp`.
+Every pedal in `fx::registry` works here automatically.
 
 ## Rendering through a built plugin (rs-host-render)
 
@@ -103,7 +119,8 @@ $H $P di.wav out.wav Rig.loop1=overdrive loopMix=50 pre1_on=0 input=3
 `id=value` sets a parameter in its own units; `Rig.key=value` sets a rig
 attribute (`ampFile`, `powerFile`, `cabFile`, `pre1`..`pre6`, `loop1`..`loop6`
 with pedal ids like `overdrive`, `boost`, `eq`, `chorus`, `delay`, `reverb`,
-`tremolo`, `vibrato`, `flanger`, `phaser`, `spring`, `compressor`, `wah`).
+`tremolo`, `vibrato`, `flanger`, `phaser`, `spring`, `compressor`, `wah`,
+`fuzz`, `bigfuzz`, `cleandrive`).
 Slot knobs are `pre1_k1`.. and run 0..1 across the pedal's range (log for
 frequencies and times). A pedal set this way keeps the knobs' values rather
 than its own defaults, so set every knob you care about. Prints latency, peak and RMS.

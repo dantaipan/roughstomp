@@ -37,6 +37,9 @@ rs::ui::PedalColours SlotView::coloursFor (const fx::PedalInfo* info)
     else if (id == "spring")  paint (0xff6b4a2f, 0xff47301d);
     else if (id == "compressor") paint (0xff4d6f74, 0xff30484c);
     else if (id == "wah")     paint (0xff3a3a3a, 0xff1c1c1c);
+    else if (id == "fuzz")       paint (0xff8e1b3a, 0xff5e1026);
+    else if (id == "bigfuzz")    paint (0xff6b7a2e, 0xff47511e);
+    else if (id == "cleandrive") paint (0xffb07a4a, 0xff7a5232);
     return c;
 }
 

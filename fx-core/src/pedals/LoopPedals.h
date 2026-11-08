@@ -7,6 +7,7 @@
 #include "fx/Filters.h"
 #include "fx/GraphicEq.h"
 #include "fx/Lfo.h"
+#include "fx/Oversampler.h"
 #include "fx/Pedal.h"
 #include "fx/Smoother.h"
 
@@ -371,6 +372,122 @@ private:
     LinearSmoother levelGain { 1.0f }, wet { 1.0f };
     struct State { float ic1 = 0.0f, ic2 = 0.0f; };
     std::vector<State> states;   // per channel
+};
+
+/** Shared by the drive pedals: 8x oversampling around the nonlinear part
+    (as the Overdrive), chunking to the prepared block size, and bypass as a
+    crossfade with the dry signal taken through the same oversampler, so the
+    latency never changes. A drive fills in the oversampled processing. */
+class DrivePedal : public BasicPedal
+{
+public:
+    using BasicPedal::BasicPedal;
+
+    void prepare (double sampleRate, int maxBlockSize, int numChannels) override;
+    void reset() override;
+    void process (float* const* channels, int numChannels, int numSamples) override;
+    int getLatencySamples() const override { return oversampler.getLatencySamples(); }
+
+protected:
+    static constexpr int oversamplingLog2 = 3;
+
+    /** Allocate and set up for this (oversampled) rate. */
+    virtual void prepareDrive (double osRate, int maxOversampledBlock, int numChannels) = 0;
+    virtual void resetDrive() noexcept = 0;
+    /** Start of a block: point the smoothers at the current settings. With
+        jump, go straight there (the first block after prepare). */
+    virtual void setTargets (bool jump) noexcept = 0;
+    /** Process n oversampled samples per channel, in place. */
+    virtual void processOversampled (float* const* x, int numChannels, int n) noexcept = 0;
+
+    /** Fills out[0..n) from a smoother (cheaply when it's idle). */
+    template <typename Smoother>
+    static void fill (Smoother& s, float* out, int n) noexcept
+    {
+        if (! s.isSmoothing())
+            std::fill (out, out + n, s.getCurrent());
+        else
+            for (int i = 0; i < n; ++i)
+                out[i] = s.next();
+    }
+
+private:
+    Oversampler oversampler;
+    int maxBlock = 512;
+    bool primed = false;
+    LinearSmoother wet { 1.0f };
+    std::vector<float> wetCurve;
+    std::vector<std::vector<float>> dry;
+};
+
+/** Fuzz: a vintage two-transistor style. Fuzz sets the gain, Bias the
+    transistors' operating point: lower starves them into a gated, sputtering
+    sound. Raspy and asymmetric; softer playing (or the guitar's volume)
+    clips less. */
+class FuzzPedal final : public DrivePedal
+{
+public:
+    enum Index { fuzz, bias, level };
+    static const PedalInfo& staticInfo();
+    FuzzPedal() : DrivePedal (staticInfo()) {}
+
+private:
+    void prepareDrive (double osRate, int maxOversampledBlock, int numChannels) override;
+    void resetDrive() noexcept override;
+    void setTargets (bool jump) noexcept override;
+    void processOversampled (float* const* x, int numChannels, int n) noexcept override;
+
+    LinearSmoother gain1 { 1.0f }, offset { 0.0f }, levelGain { 1.0f };
+    std::vector<float> g1, off, lv;
+    struct Channel { OnePole input, fizz; DcBlocker dc; };
+    std::vector<Channel> state;
+};
+
+/** Big Fuzz: the cascaded-stage, sustaining style. Two clipping stages for
+    long sustain, then a tone control that sweeps from bass through a scooped
+    middle to treble. */
+class BigFuzzPedal final : public DrivePedal
+{
+public:
+    enum Index { sustain, tone, level };
+    static const PedalInfo& staticInfo();
+    BigFuzzPedal() : DrivePedal (staticInfo()) {}
+
+private:
+    void prepareDrive (double osRate, int maxOversampledBlock, int numChannels) override;
+    void resetDrive() noexcept override;
+    void setTargets (bool jump) noexcept override;
+    void processOversampled (float* const* x, int numChannels, int n) noexcept override;
+
+    LinearSmoother gain1 { 1.0f }, toneMix { 0.5f }, levelGain { 1.0f };
+    std::vector<float> g1, tm, lv;
+    struct Channel { OnePole input, stage1, stage2, bass, treble; DcBlocker dc; };
+    std::vector<Channel> state;
+};
+
+/** Clean Boost Drive: the transparent style. Soft clipping blended with a
+    clean path that stays, so the guitar's own sound comes through; Gain
+    brings in more of the clipped side; an active Treble control. */
+class CleanDrivePedal final : public DrivePedal
+{
+public:
+    enum Index { gain, treble, level };
+    static const PedalInfo& staticInfo();
+    CleanDrivePedal() : DrivePedal (staticInfo()) {}
+
+private:
+    void prepareDrive (double osRate, int maxOversampledBlock, int numChannels) override;
+    void resetDrive() noexcept override;
+    void setTargets (bool jump) noexcept override;
+    void processOversampled (float* const* x, int numChannels, int n) noexcept override;
+
+    double rate = 384000.0;
+    LinearSmoother driveGain { 1.0f }, dirtyMix { 0.3f }, levelGain { 1.0f };
+    OnePoleSmoother trebleDb { 0.0f };
+    std::vector<float> dg, dm, lv;
+    struct Channel { OnePole driveLowCut, driveTop; Biquad treble; DcBlocker dc; };
+    std::vector<Channel> state;
+    float lastTrebleDb = 1000.0f;
 };
 
 } // namespace fx

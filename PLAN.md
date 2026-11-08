@@ -199,7 +199,12 @@ Pedals (all stereo):
 
 ## Phase 7 — Later ideas
 
-- [ ] More drives: fuzz, Big Muff-style, Klon-style
+Loose ends from earlier phases, done first:
+- [x] Regression renders for every pedal (`fx-core-tests "[regression]"`, references in `fx-core/tests/regression`); `rs-render` takes any pedal from the registry
+- [x] Amp, power amp and cab on/off crossfade (20 ms) against a latency-aligned dry signal instead of clicking
+- [x] Capture loading in the background: choosing an amp or loading a preset doesn't freeze the GUI (session restore stays synchronous, for offline bounces)
+
+- [x] More drives: Fuzz (vintage two-transistor style, with Bias for the gated sound), Big Fuzz (cascaded, sustaining, scooped tone), Clean Drive (transparent: clean side kept, treble) — shared 8x-oversampled `DrivePedal` base; levels fitted to sit with the Overdrive
 - [ ] Stereo or dual-amp rigs
 - [ ] Optional (deferred): circuit-modelled stage (wave digital filters or nodal analysis) as a learning exercise
 - [ ] CLAP format

@@ -1,7 +1,11 @@
 // rs-render: process a WAV file through an fx-core effect.
 //
-//   rs-render <effect> <in.wav> <out.wav> [name=value ...] [--block=N] [--24bit]
+//   rs-render <effect> <in.wav> <out.wav> [name=value ...] [--block=N] [--24bit] [--bpm=N]
 //   rs-render --list
+//
+// <effect> is any pedal in fx::registry (overdrive, delay, reverb, ...), with
+// its controls by id in their own units (e.g. time=380 feedback=30), or
+// "gain" (db=...). Controls not given stay at the pedal's defaults.
 //
 // The output is latency-compensated (lines up sample-for-sample with the
 // input), so you can A/B or null-test it against the input or another render.
@@ -9,8 +13,8 @@
 
 #include <juce_audio_formats/juce_audio_formats.h>
 
+#include "fx/Pedal.h"
 #include "fx/effects/Gain.h"
-#include "fx/effects/Overdrive.h"
 
 #include <functional>
 #include <iostream>
@@ -33,7 +37,7 @@ float param (const Params& p, const char* name, float fallback)
     return it != p.end() ? it->second : fallback;
 }
 
-// Add new effects here as they arrive in fx-core.
+// Effects that aren't pedals (pedals come from fx::registry).
 const std::map<juce::String, EffectInfo>& registry()
 {
     static const std::map<juce::String, EffectInfo> effects {
@@ -44,32 +48,31 @@ const std::map<juce::String, EffectInfo>& registry()
                         g->setGainDecibels (param (p, "db", 0.0f));
                         return g;
                     } } },
-        { "overdrive", { "drive=<0..10> tone=<0..10> level=<dB> mix=<0..100> mode=<0 soft|1 hard|2 asym>  (defaults 5 5 0 100 0)",
-                         [] (const Params& p)
-                         {
-                             auto od = std::make_unique<fx::Overdrive>();
-                             od->setParameters ({ param (p, "drive", 5.0f) / 10.0f,
-                                                  param (p, "tone", 5.0f) / 10.0f,
-                                                  param (p, "level", 0.0f),
-                                                  param (p, "mix", 100.0f) / 100.0f,
-                                                  false,
-                                                  static_cast<fx::Overdrive::Mode> (juce::jlimit (0, fx::Overdrive::numModes - 1,
-                                                                                                  juce::roundToInt (param (p, "mode", 0.0f)))) });
-                             return od;
-                         } } },
     };
     return effects;
 }
 
 int usage()
 {
-    std::cerr << "Usage: rs-render <effect> <in.wav> <out.wav> [name=value ...] [--block=N] [--24bit]\n"
+    std::cerr << "Usage: rs-render <effect> <in.wav> <out.wav> [name=value ...] [--block=N] [--24bit] [--bpm=N]\n"
                  "       rs-render --list\n";
     return 1;
 }
 
 int listEffects()
 {
+    for (const auto* info : fx::registry::all())
+    {
+        std::cout << "  " << info->id << "  ";
+        for (const auto& p : info->params)
+        {
+            std::cout << " " << p.id << "=<" << p.minValue << ".." << p.maxValue;
+            if (! p.unit.empty())
+                std::cout << " " << p.unit;
+            std::cout << ", " << p.defaultValue << ">";
+        }
+        std::cout << "\n";
+    }
     for (const auto& [name, info] : registry())
         std::cout << "  " << name << "   " << info.params << "\n";
     return 0;
@@ -94,8 +97,9 @@ int main (int argc, char* argv[])
     if (args.size() < 3)
         return usage();
 
+    const auto* pedalInfo = fx::registry::find (args[0].toStdString());
     const auto effectIt = registry().find (args[0]);
-    if (effectIt == registry().end())
+    if (pedalInfo == nullptr && effectIt == registry().end())
         return fail ("unknown effect '" + args[0] + "' (try --list)");
 
     const auto cwd = juce::File::getCurrentWorkingDirectory();
@@ -106,6 +110,7 @@ int main (int argc, char* argv[])
     Params params;
     int blockSize = 512;
     bool write24 = false;
+    double bpm = 120.0;
 
     for (int i = 3; i < args.size(); ++i)
     {
@@ -115,6 +120,8 @@ int main (int argc, char* argv[])
             blockSize = juce::jlimit (1, 65536, a.fromFirstOccurrenceOf ("=", false, false).getIntValue());
         else if (a == "--24bit")
             write24 = true;
+        else if (a.startsWith ("--bpm="))
+            bpm = a.fromFirstOccurrenceOf ("=", false, false).getDoubleValue();
         else if (a.contains ("="))
             params[a.upToFirstOccurrenceOf ("=", false, false).trim()] = a.fromFirstOccurrenceOf ("=", false, false).getFloatValue();
         else
@@ -134,7 +141,22 @@ int main (int argc, char* argv[])
     const double sampleRate = reader->sampleRate;
 
     // Create and prepare the effect
-    auto effect = effectIt->second.create (params);
+    std::unique_ptr<fx::Effect> effect;
+    if (pedalInfo != nullptr)
+    {
+        auto pedal = fx::registry::create (pedalInfo->id);
+        for (const auto& [name, value] : params)
+        {
+            const int index = pedalInfo->indexOf (name.toStdString());
+            if (index < 0)
+                return fail ("'" + args[0] + "' has no control '" + name + "' (try --list)");
+            pedal->setParameter (index, value);
+        }
+        pedal->setTempo (bpm);
+        effect = std::move (pedal);
+    }
+    else
+        effect = effectIt->second.create (params);
     effect->prepare (sampleRate, blockSize, numChannels);
     const int latency = effect->getLatencySamples();
 

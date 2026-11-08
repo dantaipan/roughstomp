@@ -5,6 +5,7 @@
 
 #include "AmpModel.h"
 #include "fx/Chain.h"
+#include "fx/DelayLine.h"
 #include "fx/Handoff.h"
 #include "fx/NoiseGate.h"
 #include "fx/PitchDetector.h"
@@ -106,7 +107,7 @@ public:
 
     /** keepCurrent leaves the amp, power amp and cab as they are (factory
         presets don't know which captures you have). */
-    enum class Files { restore, keepCurrent };
+    enum class Files { restore, restoreInBackground, keepCurrent };
     void restoreState (const juce::XmlElement&, Files);
 
     /** The preset the rig came from ("" if none), and whether it had been
@@ -131,8 +132,21 @@ public:
     /** Any thread. nullptr for an empty slot. */
     const fx::PedalInfo* getSlotInfo (rig::Section, int slot) const noexcept;
 
-    /** Returns an error message, or an empty string on success. */
+    /** Loads now (blocking). Returns an error message, or empty on success. */
     juce::String loadAmp (rig::AmpStage, const juce::File&);
+
+    /** Loads on a background thread so the GUI doesn't freeze; the current
+        amp keeps playing until the new one is ready. keepOld: the panel shows
+        the old file until then, and a failed load changes nothing.
+        showNewNow: it shows the new file (loading) at once, and a failed
+        load leaves it there with the problem (as a restored session does).
+        A later load or clear cancels an earlier one. `done` runs on the
+        message thread with an error message, or empty on success. */
+    enum class AmpLoad { keepOld, showNewNow };
+    void loadAmpAsync (rig::AmpStage, const juce::File&, AmpLoad, std::function<void (const juce::String&)> done = {});
+
+    /** The file being loaded in the background, or none. */
+    juce::File getLoadingAmpFile (rig::AmpStage) const;
     void clearAmp (rig::AmpStage);
     juce::File getAmpFile (rig::AmpStage) const;
 
@@ -177,7 +191,17 @@ private:
         double expectedRate = 0.0;   // the capture's sample rate, 0 if any
         int latency = 0;             // from resampling to expectedRate
         juce::String problem;
+        juce::File loadingFile;      // a background load in progress
+        int generation = 0;          // bumped by every load or clear: stale loads are dropped
     };
+
+    struct BuiltAmps
+    {
+        std::unique_ptr<Amps> amps;
+        juce::String error;
+    };
+    static BuiltAmps buildAmps (rig::AmpStage, const juce::File&, double rate, int block);
+    void publishAmps (rig::AmpStage, const juce::File&, std::unique_ptr<Amps>);
 
     static constexpr size_t index (rig::Section s) noexcept { return static_cast<size_t> (s); }
     Slot& slot (rig::Section s, int i) noexcept { return slots[index (s)][static_cast<size_t> (i)]; }
@@ -254,6 +278,14 @@ private:
     fx::LinearSmoother inputGain { 1.0f }, ampGain { 1.0f }, ampLevel { 1.0f },
                        sendGain { 1.0f }, returnGain { 1.0f }, mix { 1.0f }, outputGain { 1.0f };
 
+    // Amp, power amp and cab switch on and off by crossfading with their
+    // dry signal (the amps' dry delayed to match their resampling latency)
+    fx::LinearSmoother ampBlend { 1.0f }, powerBlend { 1.0f }, cabBlend { 1.0f };
+    fx::DelayLine ampDryLine;
+    std::array<fx::DelayLine, 2> powerDryLines;
+    std::vector<float> ampDry;
+    std::array<std::vector<float>, 2> powerDry, cabDry;
+
     // The loop's dry path, delayed to line up with its pedals' latency
     std::array<std::vector<float>, 2> dryDelay, dry;
     int dryWrite = 0;
@@ -264,5 +296,10 @@ private:
     double quarterNotes = 0.0;
     bool playing = false;
 
+    // Background loading of captures. Last, so it's destroyed (waiting for
+    // any load in progress) before everything else.
+    juce::ThreadPool loader { juce::ThreadPoolOptions{}.withThreadName ("RoughStomp loader").withNumberOfThreads (1) };
+
+    JUCE_DECLARE_WEAK_REFERENCEABLE (RigProcessor)
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (RigProcessor)
 };

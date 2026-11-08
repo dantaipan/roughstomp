@@ -95,7 +95,7 @@ juce::String PresetManager::load (const Entry& e)
         auto xml = juce::XmlDocument::parse (e.file);
         if (xml == nullptr || ! xml->hasTagName ("RoughStompPreset") || xml->getFirstChildElement() == nullptr)
             return "It isn't a RoughStomp preset.";
-        processor.restoreState (*xml->getFirstChildElement(), RigProcessor::Files::restore);
+        processor.restoreState (*xml->getFirstChildElement(), RigProcessor::Files::restoreInBackground);
         loaded (e.name, false);
         return {};
     }

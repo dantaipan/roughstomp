@@ -6,6 +6,7 @@ add_library(fx-core STATIC
     src/RateBridge.cpp
     src/pedals/Chorus.cpp
     src/pedals/Delay.cpp
+    src/pedals/Drives.cpp
     src/pedals/Dynamics.cpp
     src/pedals/Eq.cpp
     src/pedals/Modulation.cpp
@@ -61,11 +62,13 @@ if(ROUGHSTOMP_BUILD_TESTS)
         tests/PedalTests.cpp
         tests/Phase6Tests.cpp
         tests/RateBridgeTests.cpp
+        tests/RegressionTests.cpp
         tests/SmootherTests.cpp
         tests/WaveshaperTests.cpp
     )
     target_link_libraries(fx-core-tests PRIVATE fx::core fx-warnings Catch2::Catch2WithMain)
     target_include_directories(fx-core-tests PRIVATE src)   # tests may use pedals' own helpers
+    target_compile_definitions(fx-core-tests PRIVATE FX_REGRESSION_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/regression")
 
     list(APPEND CMAKE_MODULE_PATH ${catch2_SOURCE_DIR}/extras)
     include(Catch)

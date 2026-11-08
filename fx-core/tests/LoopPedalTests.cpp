@@ -102,13 +102,15 @@ TEST_CASE ("Loop pedals are registered and behave", "[looppedals]")
                               std::string_view ("delay"), std::string_view ("reverb"),
                               std::string_view ("tremolo"), std::string_view ("vibrato"),
                               std::string_view ("flanger"), std::string_view ("phaser"),
-                              std::string_view ("spring"));
+                              std::string_view ("spring"), std::string_view ("compressor"), std::string_view ("wah"),
+                              std::string_view ("fuzz"), std::string_view ("bigfuzz"), std::string_view ("cleandrive"));
     CAPTURE (id);
     const int channels = GENERATE (1, 2);
     CAPTURE (channels);
 
     Rig rig (id, channels);
-    CHECK (rig.pedal->getLatencySamples() == 0);
+    const bool oversampled = id == "fuzz" || id == "bigfuzz" || id == "cleandrive";
+    CHECK (rig.pedal->getLatencySamples() == (oversampled ? 42 : 0));
 
     // Loud noise at every setting's extreme stays finite and bounded
     for (int p = 0; p < static_cast<int> (rig.pedal->info().params.size()); ++p)
@@ -638,4 +640,69 @@ TEST_CASE ("Synced modulation locks to the host's beat while playing", "[loopped
         ppq += block * 97.0 / (60.0 * fs);
     }
     CHECK (jerk (y, 2, y.size()) < 1e-4);
+}
+
+TEST_CASE ("Drives: fuzz gating, the big fuzz's scoop, the clean drive's clean side", "[looppedals][drives]")
+{
+    auto levelDb = [] (Rig& rig, double freq, double amplitude)
+    {
+        rig.pedal->reset();
+        const auto y = rig.run (test::sine (freq, fs, 24000 + 4800, amplitude));
+        return test::toDb (test::amplitudeAt (y[0], freq, fs, 24000, 4800));
+    };
+
+    SECTION ("Fuzz: starving the bias gates quiet notes far more than loud ones")
+    {
+        auto gap = [&] (float bias)
+        {
+            Rig rig ("fuzz", 1);
+            rig.set ("bias", bias);
+            return levelDb (rig, 220.0, 0.3) - levelDb (rig, 220.0, 0.003);   // loud minus quiet
+        };
+        CHECK (gap (2.0f) > gap (10.0f) + 10.0);
+    }
+
+    SECTION ("Big Fuzz: tone in the middle scoops the mids")
+    {
+        Rig rig ("bigfuzz", 1);
+        rig.set ("sustain", 0.0f);
+        // Tiny input keeps it in the clean region, so this is the tone stack
+        const double low = levelDb (rig, 250.0, 0.0005), mid = levelDb (rig, 1000.0, 0.0005), high = levelDb (rig, 3500.0, 0.0005);
+        CHECK (mid < low - 3.0);
+        CHECK (mid < high - 3.0);
+    }
+
+    SECTION ("Clean Drive: at low gain it's mostly the clean signal; up high, much dirtier")
+    {
+        auto harmonics = [&] (float gainKnob)
+        {
+            Rig rig ("cleandrive", 1);
+            rig.set ("gain", gainKnob);
+            rig.set ("treble", 4.0f);   // flat
+            rig.pedal->reset();
+            const auto y = rig.run (test::sine (200.0, fs, 24000 + 4800, 0.3));
+            const double f = test::amplitudeAt (y[0], 200.0, fs, 24000, 4800);
+            const double h = test::amplitudeAt (y[0], 400.0, fs, 24000, 4800) + test::amplitudeAt (y[0], 600.0, fs, 24000, 4800);
+            return test::toDb (h / f);
+        };
+        CHECK (harmonics (0.0f) < -20.0);
+        CHECK (harmonics (10.0f) > harmonics (0.0f) + 10.0);
+    }
+
+    SECTION ("Bypassed, a drive is the dry signal delayed by its latency")
+    {
+        for (auto id : { "fuzz", "bigfuzz", "cleandrive" })
+        {
+            CAPTURE (id);
+            Rig rig (id, 1);
+            rig.pedal->setBypassed (true);
+            const auto x = test::sine (440.0, fs, 24000, 0.5);
+            const auto y = rig.run (x)[0];
+            const int latency = rig.pedal->getLatencySamples();
+            double worst = 0.0;
+            for (size_t i = 12000; i < y.size(); ++i)
+                worst = std::max (worst, std::abs (static_cast<double> (y[i]) - x[i - static_cast<size_t> (latency)]));
+            CHECK (test::toDb (worst) < -40.0);
+        }
+    }
 }
