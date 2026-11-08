@@ -24,40 +24,19 @@ juce::Font family::font (float height, bool bold)
 //==============================================================================
 FamilyLookAndFeel::FamilyLookAndFeel()
 {
+    // Exactly RoughTrack's console set-up: everything else (menus, combo boxes,
+    // toggles, dialogs) follows from the colour scheme, as it does there
     using namespace family;
     setColourScheme ({ panel, widget, strip, outline, cream, amber, juce::Colours::black, amber, cream });
 
-    setColour (juce::TextButton::buttonColourId, widget);
     setColour (juce::TextButton::textColourOnId, juce::Colours::black);
     setColour (juce::TextButton::textColourOffId, cream);
-    setColour (juce::TextButton::buttonOnColourId, amber);
     setColour (juce::Label::textColourId, cream);
     setColour (juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
     setColour (juce::Slider::textBoxTextColourId, cream);
     setColour (juce::ScrollBar::thumbColourId, outline);
     setColour (juce::TooltipWindow::backgroundColourId, recess);
     setColour (juce::TooltipWindow::textColourId, cream);
-    setColour (juce::ToggleButton::textColourId, cream);
-    setColour (juce::ToggleButton::tickColourId, cream);
-    setColour (juce::ToggleButton::tickDisabledColourId, dimText);
-    setColour (juce::ComboBox::backgroundColourId, widget);
-    setColour (juce::ComboBox::outlineColourId, juce::Colours::black.withAlpha (0.6f));
-    setColour (juce::ComboBox::textColourId, cream);
-    setColour (juce::ComboBox::arrowColourId, cream);
-    setColour (juce::PopupMenu::backgroundColourId, strip);
-    setColour (juce::PopupMenu::textColourId, cream);
-    setColour (juce::PopupMenu::headerTextColourId, dimText);
-    setColour (juce::PopupMenu::highlightedBackgroundColourId, amber);
-    setColour (juce::PopupMenu::highlightedTextColourId, juce::Colours::black);
-    setColour (juce::BubbleComponent::backgroundColourId, recess);
-    setColour (juce::BubbleComponent::outlineColourId, outline);
-    setColour (juce::AlertWindow::backgroundColourId, panel);
-    setColour (juce::AlertWindow::textColourId, cream);
-    setColour (juce::AlertWindow::outlineColourId, outline);
-    setColour (juce::TextEditor::backgroundColourId, recess);
-    setColour (juce::TextEditor::textColourId, cream);
-    setColour (juce::TextEditor::outlineColourId, outline);
-    setColour (juce::TextEditor::focusedOutlineColourId, amber);
 }
 
 void FamilyLookAndFeel::drawCap (juce::Graphics& g, juce::Rectangle<float> cap, bool isVertical)

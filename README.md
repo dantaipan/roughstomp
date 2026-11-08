@@ -181,3 +181,7 @@ target_link_libraries(RoughTrack PRIVATE fx::core)
 ```
 
 fx-core's tests are only built when `ROUGHSTOMP_BUILD_TESTS` is ON, which it isn't inside RoughTrack, so nothing else is needed.
+
+## Licence
+
+AGPL-3.0, like RoughTrack (see LICENSE).
