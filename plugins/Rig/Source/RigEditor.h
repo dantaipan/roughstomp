@@ -6,15 +6,12 @@
 #include "rs_ui/Pedal.h"
 
 /** A box for something loaded from a file (amp capture, cabinet IR):
-    title, Load/Clear buttons, the file's name, any problem, and an on switch. */
+    title, Load/Clear buttons, the file's name, any problem, and an on switch.
+    Drawn like every other box in the row (see drawBox in RigEditor.cpp). */
 class FilePanel final : public juce::Component
 {
 public:
-    /** How it's dressed: an amp head (tolex, piping, name plate), a power amp
-        (dark metal), or a cab (grille cloth on the right). */
-    enum class Style { amp, power, cab };
-
-    FilePanel (Style, const juce::String& title, const juce::String& emptyText,
+    FilePanel (const juce::String& title, const juce::String& emptyText,
                juce::AudioProcessorValueTreeState&, const juce::ParameterID& onParam);
 
     void show (const juce::File&, const juce::String& problem);
@@ -29,9 +26,7 @@ public:
     void resized() override;
 
 private:
-    Style style;
     juce::String title, emptyText;
-    bool hasFile = false;
     juce::TextButton load { "Load..." }, clear { "Clear" };
     juce::Label name, problem;
     juce::ToggleButton on { "On" };
@@ -63,21 +58,26 @@ private:
 };
 
 //==============================================================================
-/** The tuner: note name, how many cents off, and a needle. Shown over the
-    amp row while the tuner is on. */
+/** The tuner, as in RoughTrack: a strobe whose bands drift right when the
+    string is sharp, left when it's flat, and stand still in tune; the note
+    and how many cents off beside it. Shown over the amp row while tuning. */
 class TunerDisplay final : public juce::Component
 {
 public:
-    /** Call regularly with the processor's latest reading. */
-    void update (const RigProcessor::TunerReading&);
+    /** Call regularly with the processor's latest reading and the time since
+        the last call (the strobe moves with it). */
+    void update (const RigProcessor::TunerReading&, double secondsSinceLast);
 
     void paint (juce::Graphics&) override;
 
 private:
-    juce::String note;
-    int octave = 0;
-    float cents = 0.0f;         // smoothed
-    int framesSinceNote = 1000; // readings since the last clear one
+    void paintBand (juce::Graphics&, juce::Rectangle<float>, float barWidth, float offset, juce::Colour) const;
+
+    std::vector<double> recentCents;   // a plucked string wobbles: the median of a few
+    int shownNote = -1;                // MIDI note, -1 for none
+    double shownCents = 0.0;
+    double secondsSinceNote = 0.0;
+    double strobePhase = 0.0;
 };
 
 //==============================================================================
@@ -114,20 +114,21 @@ private:
     void refreshPanels();
 
     RigProcessor& rigProcessor;
-    rs::ui::PedalLookAndFeel lookAndFeel;
+    rs::ui::FamilyLookAndFeel lookAndFeel;   // the app around the pedals, as RoughTrack
     Board board;   // before the controls: they're its children
 
     std::array<std::unique_ptr<SlotView>, rig::slotsPerSection> preSlots, loopSlots;
 
-    rs::ui::PedalKnob input, gateThreshold, ampGain, ampLevel, loopSend, loopReturn, loopMix, output;
+    rs::ui::ConsoleKnob input, gateThreshold, loopSend, loopReturn, loopMix, output, ampGain, ampLevel;
     juce::ToggleButton gateOnButton { "Gate" };
     juce::AudioProcessorValueTreeState::ButtonAttachment gateOnAttachment;
-    juce::TextButton tunerButton { "TUNER" };
+    juce::TextButton tunerButton { "Tuner" };
     juce::AudioProcessorValueTreeState::ButtonAttachment tunerAttachment;
     TunerDisplay tuner;
     PresetBar presetBar;
     int ticks = 0;
-    juce::ToggleButton loopOnButton { "Loop on" };
+    double lastTick = 0.0;   // ms, for the tuner's strobe
+    juce::ToggleButton loopOnButton { "On" };
     juce::AudioProcessorValueTreeState::ButtonAttachment loopOnAttachment;
 
     FilePanel ampPanel, powerPanel, cabPanel;
@@ -135,6 +136,7 @@ private:
     juce::File lastFolder;
 
     juce::Rectangle<int> preArea, ampArea, loopArea;
+    juce::Rectangle<int> inputBox, outputBox, loopBox;   // drawn behind their controls
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (RigEditor)
 };

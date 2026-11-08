@@ -2,6 +2,8 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 
+#include "rs_ui/Family.h"
+
 /* Shared pedal GUI. Every RoughStomp pedal uses these so they look like one
    family; each pedal picks its own PedalColours. Everything is drawn in
    code, with no image files. */
@@ -12,7 +14,7 @@ struct PedalColours
 {
     juce::Colour body     { 0xffb8402a };   // enclosure, top-left of the gradient
     juce::Colour bodyDark { 0xff8e2c1c };   // enclosure, bottom-right
-    juce::Colour ink      { 0xfff3e6cf };   // lettering
+    juce::Colour ink      { family::cream };   // lettering
     juce::Colour knob     { 0xff1c1c1c };
     juce::Colour ledOn    { 0xffff3b2f };
     juce::Colour ledOff   { 0xff4a1410 };
@@ -21,8 +23,10 @@ struct PedalColours
 juce::Font pedalFont (float height, bool bold = true);
 
 //==============================================================================
-/** Black pedal knobs with a white pointer and scale ticks, and dark preset menus. */
-class PedalLookAndFeel final : public juce::LookAndFeel_V4
+/** Black pedal knobs with a white pointer and scale ticks, small faders and
+    dark menu plates on the enclosure. Everything else (popup menus, buttons,
+    tooltips) is the family look. */
+class PedalLookAndFeel final : public FamilyLookAndFeel
 {
 public:
     explicit PedalLookAndFeel (const PedalColours& = {});

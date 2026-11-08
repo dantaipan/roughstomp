@@ -89,6 +89,7 @@ void SlotView::rebuild()
     footswitch.reset();
     led.reset();
     colours = coloursFor (shown);
+    pedalLook = std::make_unique<rs::ui::PedalLookAndFeel> (colours);
 
     int selected = emptyItemId;
     const auto all = fx::registry::all();
@@ -119,6 +120,7 @@ void SlotView::rebuild()
                 f.slider->onValueChange = [this] { repaint(); };
                 f.label = juce::String (std::string (info.name)).toUpperCase();
                 f.info = &info;
+                f.slider->setLookAndFeel (pedalLook.get());
                 addAndMakeVisible (*f.slider);
                 faders.push_back (std::move (f));
             }
@@ -127,6 +129,7 @@ void SlotView::rebuild()
                 auto knob = std::make_unique<rs::ui::PedalKnob> (apvts, id, name, true);
                 knob->slider.setDoubleClickReturnValue (true, rig::toNormalised (info, info.defaultValue));
                 knob->setPopupParent (popupParent);
+                knob->setLookAndFeel (pedalLook.get());
                 addAndMakeVisible (*knob);
                 knobs.push_back (std::move (knob));
             }
@@ -156,6 +159,7 @@ void SlotView::rebuild()
                     attachment->setValueAsCompleteGesture (rig::toNormalised (info, plain));
                 };
                 attachment->sendInitialUpdate();
+                box->setLookAndFeel (pedalLook.get());
                 addAndMakeVisible (*box);
                 choices.push_back (std::move (c));
             }
@@ -221,12 +225,13 @@ void SlotView::paint (juce::Graphics& g)
     {
         juce::Path outline;
         outline.addRoundedRectangle (body, 12.0f);
-        const float dashes[] { 6.0f, 5.0f };
-        juce::PathStrokeType (1.5f).createDashedStroke (outline, outline, dashes, 2);
-        g.setColour (juce::Colours::white.withAlpha (dropHighlight ? 0.6f : 0.18f));
+        // As RoughTrack's "+ Track" placeholder
+        const float dashes[] { 5.0f, 4.0f };
+        juce::PathStrokeType (1.0f).createDashedStroke (outline, outline, dashes, 2);
+        g.setColour (dropHighlight ? rs::ui::family::cream : rs::ui::family::dimText.withAlpha (0.6f));
         g.fillPath (outline);
-        g.setFont (rs::ui::pedalFont (12.0f, false));
-        g.drawText ("empty", body, juce::Justification::centred);
+        g.setFont (rs::ui::family::font (13.0f));
+        g.drawText ("Empty", body, juce::Justification::centred);
         return;
     }
 

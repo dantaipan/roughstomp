@@ -55,6 +55,9 @@ private:
     const fx::PedalInfo* shown = nullptr;
     bool built = false;
     rs::ui::PedalColours colours;
+    // The pedal's own look (its colours), for its controls; declared before
+    // them so it outlives them
+    std::unique_ptr<rs::ui::PedalLookAndFeel> pedalLook;
 
     bool dropHighlight = false;
 

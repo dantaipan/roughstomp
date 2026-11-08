@@ -2,37 +2,59 @@
 
 namespace
 {
-const juce::Colour background { 0xff141414 };
-const juce::Colour panel      { 0xff1e1e1e };
-const juce::Colour ink        { 0xfff3e6cf };
-const juce::Colour warning    { 0xffff8a65 };
+// The family palette (shared with RoughTrack)
+namespace fam = rs::ui::family;
+const juce::Colour background = fam::panel;
+const juce::Colour ink        = fam::cream;
+const juce::Colour warning    = fam::amber;
 
 constexpr int margin = 12;
 constexpr int slotWidth = 148, slotGap = 6, slotHeight = 300;
 constexpr int sideWidth = 112;
 constexpr int labelHeight = 20;
 constexpr int ampRowHeight = 150;
+constexpr int headerHeight = 48;     // wordmark, presets and Tuner, centred in it
+constexpr int headerControlHeight = 26;
+constexpr int boardOverhang = 6;     // a pedalboard reaches this far beyond its slots
 
+constexpr int boxTitleHeight = 26;    // a box's title row
+constexpr int boxButtonsHeight = 26;  // its bottom row (buttons, switches)
+
+/** Every box in the middle row and the loop's: RoughTrack's console strip
+    colour and corners, the title top left. */
+void drawBox (juce::Graphics& g, juce::Rectangle<float> b, const juce::String& title)
+{
+    g.setColour (fam::strip);
+    g.fillRoundedRectangle (b, 4.0f);
+    g.setColour (juce::Colours::black.withAlpha (0.6f));
+    g.drawRoundedRectangle (b.reduced (0.5f), 4.0f, 1.0f);
+
+    g.setColour (fam::cream);
+    g.setFont (fam::font (15.0f));
+    g.drawText (title, b.reduced (12.0f, 8.0f).removeFromTop (20.0f), juce::Justification::centredLeft);
+}
+
+/** A section heading, as RoughTrack's "Console". */
 void drawSectionLabel (juce::Graphics& g, juce::Rectangle<int> area, const juce::String& text)
 {
-    g.setColour (ink.withAlpha (0.75f));
-    g.setFont (rs::ui::pedalFont (13.0f));
+    g.setColour (fam::dimText);
+    g.setFont (fam::font (13.0f, true));
     g.drawText (text, area.removeFromTop (labelHeight), juce::Justification::centredLeft);
 }
 } // namespace
 
 //==============================================================================
-FilePanel::FilePanel (Style s, const juce::String& t, const juce::String& empty,
+FilePanel::FilePanel (const juce::String& t, const juce::String& empty,
                       juce::AudioProcessorValueTreeState& apvts, const juce::ParameterID& onParam)
-    : style (s), title (t), emptyText (empty), onAttachment (apvts, onParam.getParamID(), on)
+    : title (t), emptyText (empty), onAttachment (apvts, onParam.getParamID(), on)
 {
     load.onClick  = [this] { if (onLoad)  onLoad(); };
     clear.onClick = [this] { if (onClear) onClear(); };
 
-    name.setFont (rs::ui::pedalFont (14.0f));
+    name.setFont (fam::font (14.0f));
     name.setColour (juce::Label::textColourId, ink);
-    name.setMinimumHorizontalScale (0.6f);
-    problem.setFont (rs::ui::pedalFont (11.0f, false));
+    name.setMinimumHorizontalScale (1.0f);   // long names end in "..." rather than squashing
+    problem.setFont (fam::font (12.0f));
     problem.setColour (juce::Label::textColourId, warning);
     problem.setMinimumHorizontalScale (0.5f);
 
@@ -44,113 +66,27 @@ void FilePanel::show (const juce::File& file, const juce::String& problemText)
 {
     const bool has = file != juce::File();
     name.setText (has ? file.getFileNameWithoutExtension() : emptyText, juce::dontSendNotification);
-    const bool plate = style == Style::amp && has;   // dark lettering on the amp's name plate
-    name.setColour (juce::Label::textColourId, plate ? juce::Colour (0xff2a2018) : (has ? ink : ink.withAlpha (0.4f)));
-    name.setJustificationType (plate ? juce::Justification::centred : juce::Justification::centredLeft);
-    if (has != hasFile)
-    {
-        hasFile = has;
-        repaint();
-    }
+    name.setColour (juce::Label::textColourId, has ? ink : fam::dimText);
     name.setTooltip (has ? file.getFullPathName() : juce::String());
     problem.setText (problemText, juce::dontSendNotification);
+    problem.setColour (juce::Label::textColourId, problemText.startsWith ("Loading") ? fam::dimText : warning);
     problem.setTooltip (problemText);
     clear.setEnabled (has);
 }
 
-namespace
-{
-/** Fine diagonal lines in both directions: tolex grain or grille weave. */
-void crosshatch (juce::Graphics& g, juce::Rectangle<float> area, float spacing, juce::Colour colour, float thickness)
-{
-    g.saveState();
-    g.reduceClipRegion (area.toNearestInt());
-    g.setColour (colour);
-    const float h = area.getHeight();
-    for (float x = area.getX() - h; x < area.getRight(); x += spacing)
-    {
-        g.drawLine (x, area.getBottom(), x + h, area.getY(), thickness);
-        g.drawLine (x, area.getY(), x + h, area.getBottom(), thickness);
-    }
-    g.restoreState();
-}
-
-const juce::Colour gold { 0xffc8a96a };
-} // namespace
-
 void FilePanel::paint (juce::Graphics& g)
 {
-    auto b = getLocalBounds().toFloat();
-    juce::Colour titleColour = ink;
-
-    switch (style)
-    {
-        case Style::amp:
-        {
-            g.setColour (juce::Colour (0xff181818));
-            g.fillRoundedRectangle (b, 10.0f);
-            crosshatch (g, b.reduced (3.0f), 3.0f, juce::Colours::white.withAlpha (0.035f), 1.0f);
-            g.setColour (gold.withAlpha (0.8f));
-            g.drawRoundedRectangle (b.reduced (4.5f), 7.0f, 1.5f);
-            titleColour = gold;
-
-            // The capture's name on a cream plate
-            if (hasFile)
-            {
-                const auto plate = name.getBounds().toFloat().expanded (2.0f, 1.0f);
-                g.setGradientFill (juce::ColourGradient (juce::Colour (0xfff1e4c4), plate.getTopLeft(),
-                                                         juce::Colour (0xffd8c8a2), plate.getBottomLeft(), false));
-                g.fillRoundedRectangle (plate, 3.0f);
-                g.setColour (juce::Colours::black.withAlpha (0.4f));
-                g.drawRoundedRectangle (plate, 3.0f, 1.0f);
-            }
-            break;
-        }
-        case Style::power:
-        {
-            g.setGradientFill (juce::ColourGradient (juce::Colour (0xff343434), b.getTopLeft(),
-                                                     juce::Colour (0xff212121), b.getBottomLeft(), false));
-            g.fillRoundedRectangle (b, 10.0f);
-            g.setColour (juce::Colours::white.withAlpha (0.025f));
-            for (float y = b.getY() + 3.0f; y < b.getBottom() - 3.0f; y += 2.0f)
-                g.drawHorizontalLine (juce::roundToInt (y), b.getX() + 6.0f, b.getRight() - 6.0f);
-            break;
-        }
-        case Style::cab:
-        {
-            g.setColour (juce::Colour (0xff181818));
-            g.fillRoundedRectangle (b, 10.0f);
-            crosshatch (g, b.reduced (3.0f), 3.0f, juce::Colours::white.withAlpha (0.035f), 1.0f);
-
-            // Grille cloth with a hint of the speaker behind it
-            auto grille = extraArea.toFloat().expanded (0.0f, 4.0f);
-            g.setColour (juce::Colour (0xff2b251d));
-            g.fillRoundedRectangle (grille, 5.0f);
-            crosshatch (g, grille, 4.0f, juce::Colour (0xff8a7556).withAlpha (0.45f), 1.2f);
-            const float r = juce::jmin (grille.getWidth(), grille.getHeight()) * 0.38f;
-            g.setColour (juce::Colours::black.withAlpha (0.25f));
-            g.fillEllipse (juce::Rectangle<float> (r * 2.0f, r * 2.0f).withCentre (grille.getCentre()));
-            g.setColour (gold.withAlpha (0.6f));
-            g.drawRoundedRectangle (grille, 5.0f, 1.5f);
-            break;
-        }
-    }
-
-    g.setColour (juce::Colours::black);
-    g.drawRoundedRectangle (b.reduced (0.5f), 10.0f, 1.0f);
-
-    g.setColour (titleColour);
-    g.setFont (rs::ui::pedalFont (15.0f));
-    g.drawText (title, getLocalBounds().reduced (12, 8).removeFromTop (20), juce::Justification::centredLeft);
+    drawBox (g, getLocalBounds().toFloat(), title);
 }
 
 void FilePanel::resized()
 {
+    // The title row spans the whole box (the On switch at its right end);
+    // room for extra controls comes out of what's below it
     auto b = getLocalBounds().reduced (12, 8);
-    extraArea = b.removeFromRight (extraWidth);
-
     auto top = b.removeFromTop (20);
     on.setBounds (top.removeFromRight (56));
+    extraArea = b.removeFromRight (extraWidth);
 
     b.removeFromTop (6);
     name.setBounds (b.removeFromTop (24));
@@ -166,30 +102,24 @@ void FilePanel::resized()
 RigEditor::RigEditor (RigProcessor& p)
     : AudioProcessorEditor (p),
       rigProcessor (p),
-      input      (p.apvts, ParamIDs::input,      "INPUT"),
-      gateThreshold (p.apvts, ParamIDs::gateThreshold, "GATE", true),
-      ampGain    (p.apvts, ParamIDs::ampGain,    "GAIN", true),
-      ampLevel   (p.apvts, ParamIDs::ampLevel,   "LEVEL", true),
-      loopSend   (p.apvts, ParamIDs::loopSend,   "SEND", true),
-      loopReturn (p.apvts, ParamIDs::loopReturn, "RETURN", true),
-      loopMix    (p.apvts, ParamIDs::loopMix,    "MIX", true),
-      output     (p.apvts, ParamIDs::output,     "OUTPUT"),
+      input      (p.apvts, ParamIDs::input,      "Level"),
+      gateThreshold (p.apvts, ParamIDs::gateThreshold, "Threshold"),
+      loopSend   (p.apvts, ParamIDs::loopSend,   "Send"),
+      loopReturn (p.apvts, ParamIDs::loopReturn, "Return"),
+      loopMix    (p.apvts, ParamIDs::loopMix,    "Mix"),
+      output     (p.apvts, ParamIDs::output,     "Level"),
+      ampGain    (p.apvts, ParamIDs::ampGain,    "Gain"),
+      ampLevel   (p.apvts, ParamIDs::ampLevel,   "Level"),
       gateOnAttachment (p.apvts, ParamIDs::gateOn.getParamID(), gateOnButton),
       tunerAttachment (p.apvts, ParamIDs::tuner.getParamID(), tunerButton),
       presetBar (p.getPresets()),
       loopOnAttachment (p.apvts, ParamIDs::loopOn.getParamID(), loopOnButton),
-      ampPanel   (FilePanel::Style::amp,   "AMP",       "No capture loaded", p.apvts, ParamIDs::ampOn),
-      powerPanel (FilePanel::Style::power, "POWER AMP", "Empty (optional)",  p.apvts, ParamIDs::powerOn),
-      cabPanel   (FilePanel::Style::cab,   "CAB",       "No IR loaded",      p.apvts, ParamIDs::cabOn),
+      ampPanel   ("Amp",       "No capture loaded", p.apvts, ParamIDs::ampOn),
+      powerPanel ("Power amp", "Empty (optional)",  p.apvts, ParamIDs::powerOn),
+      cabPanel   ("Cab",       "No IR loaded",      p.apvts, ParamIDs::cabOn),
       lastFolder (juce::File::getSpecialLocation (juce::File::userDocumentsDirectory))
 {
     setLookAndFeel (&lookAndFeel);
-    lookAndFeel.setColour (juce::ToggleButton::textColourId, ink);
-    lookAndFeel.setColour (juce::ToggleButton::tickColourId, ink);
-    lookAndFeel.setColour (juce::ToggleButton::tickDisabledColourId, ink.withAlpha (0.4f));
-    lookAndFeel.setColour (juce::TextButton::buttonColourId, juce::Colour (0xff2c2c2c));
-    lookAndFeel.setColour (juce::TextButton::textColourOffId, ink);
-    lookAndFeel.setColour (juce::TooltipWindow::backgroundColourId, juce::Colour (0xff2c2c2c));
 
     for (int i = 0; i < rig::slotsPerSection; ++i)
     {
@@ -203,7 +133,7 @@ RigEditor::RigEditor (RigProcessor& p)
     for (auto* panelComponent : { &ampPanel, &powerPanel, &cabPanel })
         board.addAndMakeVisible (*panelComponent);
 
-    for (auto* knob : { &input, &gateThreshold, &ampGain, &ampLevel, &loopSend, &loopReturn, &loopMix, &output })
+    for (auto* knob : { &input, &gateThreshold, &loopSend, &loopReturn, &loopMix, &output, &ampGain, &ampLevel })
     {
         knob->setPopupParent (&board);
         board.addAndMakeVisible (*knob);
@@ -216,7 +146,7 @@ RigEditor::RigEditor (RigProcessor& p)
 
     tunerButton.setClickingTogglesState (true);
     tunerButton.setTooltip ("Tuner (mutes the output while it's on)");
-    tunerButton.setColour (juce::TextButton::buttonOnColourId, juce::Colour (0xff3f8f3a));
+    tunerButton.setColour (juce::TextButton::buttonOnColourId, fam::green);   // as RoughTrack's
     tunerButton.onStateChange = [this] { tuner.setVisible (tunerButton.getToggleState()); };
     board.addAndMakeVisible (tunerButton);
     board.addAndMakeVisible (presetBar);
@@ -229,8 +159,7 @@ RigEditor::RigEditor (RigProcessor& p)
     powerPanel.onClear = [this] { rigProcessor.clearAmp (rig::AmpStage::power); refreshPanels(); };
     cabPanel.onLoad    = [this] { chooseCabinet(); };
     cabPanel.onClear   = [this] { rigProcessor.clearCabinet(); refreshPanels(); };
-    ampPanel.setExtraWidth (130);
-    cabPanel.setExtraWidth (40);
+    ampPanel.setExtraWidth (120);   // the amp's Gain and Level
 
 
     // Everything is laid out once at the design size on the board, which is
@@ -259,8 +188,11 @@ RigEditor::~RigEditor()
 
 void RigEditor::timerCallback()
 {
+    const double now = juce::Time::getMillisecondCounterHiRes();
+    const double seconds = lastTick > 0.0 ? juce::jlimit (0.0, 0.5, (now - lastTick) / 1000.0) : 0.05;
+    lastTick = now;
     if (tuner.isVisible())
-        tuner.update (rigProcessor.readTuner());
+        tuner.update (rigProcessor.readTuner(), seconds);
     if (++ticks % 10 == 0)
         presetBar.refresh();
 
@@ -328,7 +260,11 @@ void RigEditor::chooseCabinet()
 }
 
 int RigEditor::designWidth()  { return margin * 2 + rig::slotsPerSection * (slotWidth + slotGap) + sideWidth; }
-int RigEditor::designHeight() { return margin * 2 + 2 * (labelHeight + slotHeight) + ampRowHeight + 2 * margin + 30; }
+int RigEditor::designHeight()
+{
+    return headerHeight + ampRowHeight + margin + (labelHeight + slotHeight) + margin + boardOverhang
+           + (labelHeight + slotHeight) + margin;
+}
 
 void RigEditor::paint (juce::Graphics& g)
 {
@@ -347,53 +283,56 @@ void RigEditor::paintBoard (juce::Graphics& g)
     g.fillAll (background);
 
     // Brand
-    auto header = board.getLocalBounds().reduced (margin, 0).removeFromTop (margin + 30);
+    auto header = board.getLocalBounds().reduced (margin, 0).removeFromTop (headerHeight);
     g.setColour (ink);
-    g.setFont (rs::ui::pedalFont (22.0f));
-    g.drawText ("ROUGHSTOMP", header, juce::Justification::centredLeft);
+    g.setFont (fam::font (20.0f, true));
+    g.drawText ("RoughStomp", header, juce::Justification::centredLeft);
 
     // Each row of pedals sits on a board with two rails
     for (auto area : { preArea, loopArea })
     {
-        auto boardArea = area.withTrimmedTop (labelHeight + 24).toFloat().expanded (4.0f, 6.0f)
+        auto boardArea = area.withTrimmedTop (labelHeight + 24).toFloat().expanded (4.0f, static_cast<float> (boardOverhang))
                              .withRight (static_cast<float> (preSlots.back()->getRight() + 6));
-        g.setGradientFill (juce::ColourGradient (juce::Colour (0xff222222), boardArea.getTopLeft(),
-                                                 juce::Colour (0xff1a1a1a), boardArea.getBottomLeft(), false));
+        g.setGradientFill (juce::ColourGradient (fam::strip.darker (0.15f), boardArea.getTopLeft(),
+                                                 fam::recess.brighter (0.1f), boardArea.getBottomLeft(), false));
         g.fillRoundedRectangle (boardArea, 8.0f);
         for (float t : { 0.3f, 0.72f })
         {
             const auto rail = juce::Rectangle<float> (boardArea.getX() + 6.0f, boardArea.getY() + boardArea.getHeight() * t,
                                                       boardArea.getWidth() - 12.0f, 9.0f);
-            g.setGradientFill (juce::ColourGradient (juce::Colour (0xff3a3a3a), rail.getTopLeft(),
-                                                     juce::Colour (0xff262626), rail.getBottomLeft(), false));
+            g.setGradientFill (juce::ColourGradient (fam::outline, rail.getTopLeft(),
+                                                     fam::widget.darker (0.3f), rail.getBottomLeft(), false));
             g.fillRoundedRectangle (rail, 2.0f);
         }
         g.setColour (juce::Colours::black);
         g.drawRoundedRectangle (boardArea, 8.0f, 1.0f);
     }
 
-    drawSectionLabel (g, preArea,  "PRE-AMP PEDALS");
-    drawSectionLabel (g, loopArea, "FX LOOP");
+    drawBox (g, inputBox.toFloat(), "Input");
+    drawBox (g, outputBox.toFloat(), "Output");
+    drawBox (g, loopBox.toFloat(), "Loop");
 
-    // Signal-flow hints between the rows
-    g.setColour (ink.withAlpha (0.25f));
-    g.drawLine (static_cast<float> (margin + 4), static_cast<float> (preArea.getBottom()),
-                static_cast<float> (margin + 4), static_cast<float> (ampArea.getY() + 10), 2.0f);
-    g.drawLine (static_cast<float> (margin + 4), static_cast<float> (ampArea.getBottom() - 10),
-                static_cast<float> (margin + 4), static_cast<float> (loopArea.getY() + 4), 2.0f);
+    drawSectionLabel (g, preArea,  "Pre-amp pedals");
+    drawSectionLabel (g, loopArea, "FX loop");
 }
 
 void RigEditor::layoutBoard()
 {
-    auto b = board.getLocalBounds().reduced (margin);
-    auto header = b.removeFromTop (30);
-    tunerButton.setBounds (header.removeFromRight (90).reduced (0, 3));
-    presetBar.setBounds (header.withSizeKeepingCentre (420, header.getHeight()).reduced (0, 3));
+    auto b = board.getLocalBounds();
+    {
+        // Everything in the header shares its centre line
+        auto header = b.removeFromTop (headerHeight).reduced (margin, 0);
+        tunerButton.setBounds (header.removeFromRight (90).withSizeKeepingCentre (90, headerControlHeight));
+        presetBar.setBounds (header.withSizeKeepingCentre (420, headerControlHeight));
+    }
+    b = b.reduced (margin, 0).withTrimmedBottom (margin);
 
-    preArea = b.removeFromTop (labelHeight + slotHeight);
-    b.removeFromTop (margin);
+    // The Input-to-Output row on top (where the tuner shows, as in RoughTrack),
+    // then the two rows of pedals
     ampArea = b.removeFromTop (ampRowHeight);
     b.removeFromTop (margin);
+    preArea = b.removeFromTop (labelHeight + slotHeight);
+    b.removeFromTop (margin + boardOverhang);   // the same gap below the board as below the row above it
     loopArea = b.removeFromTop (labelHeight + slotHeight);
 
     auto layoutSlots = [] (juce::Rectangle<int> area, auto& views)
@@ -410,25 +349,41 @@ void RigEditor::layoutBoard()
     layoutSlots (preArea, preSlots);
     auto loopSide = layoutSlots (loopArea, loopSlots).reduced (4, 0);
 
-    // Loop controls beside the loop pedals
-    loopOnButton.setBounds (loopSide.removeFromTop (24));
-    for (auto* knob : { &loopSend, &loopReturn, &loopMix })
-        knob->setBounds (loopSide.removeFromTop (72));
-
-    // Amp row: input, amp, power amp, cab, output
-    auto row = ampArea.withTrimmedLeft (14);
-    input.setBounds (row.removeFromLeft (84).withSizeKeepingCentre (84, 100));
+    // Loop controls in their box beside the loop pedals: title, On, knobs
+    loopBox = loopSide.withBottom (loopSide.getBottom() + boardOverhang);   // down to the board's bottom edge
     {
-        auto gateArea = row.removeFromLeft (72).withSizeKeepingCentre (72, 112);
-        gateOnButton.setBounds (gateArea.removeFromTop (24).withSizeKeepingCentre (64, 24));
-        gateThreshold.setBounds (gateArea.withSizeKeepingCentre (64, 80));
+        auto inner = loopBox.reduced (8, 8);
+        auto title = inner.removeFromTop (boxTitleHeight).withTrimmedTop (-4);
+        loopOnButton.setBounds (title.removeFromRight (52));
+        inner.removeFromTop (4);
+        for (auto* knob : { &loopSend, &loopReturn, &loopMix })
+            knob->setBounds (inner.removeFromTop (72));
     }
-    row.removeFromLeft (6);
-    output.setBounds (row.removeFromRight (84).withSizeKeepingCentre (84, 100));
-    row.removeFromRight (8);
 
+    // Middle row, in signal order: Input, Amp, Power amp, Cab, Output. Every
+    // box has a title row on top and a buttons row at the bottom, so knobs
+    // sit at the same height in each.
     const int gap = 8;
-    const int ampW = 360;
+    auto row = ampArea.withTrimmedLeft (-4);   // flush with the pedalboards' left edge
+    inputBox = row.removeFromLeft (150);
+    row.removeFromLeft (gap);
+    outputBox = row.removeFromRight (96);
+    row.removeFromRight (gap);
+
+    auto knobArea = [] (juce::Rectangle<int> box)
+    {
+        return box.reduced (10, 8).withTrimmedTop (boxTitleHeight).withTrimmedBottom (boxButtonsHeight);
+    };
+
+    {
+        auto k = knobArea (inputBox);
+        input.setBounds (k.removeFromLeft (k.getWidth() / 2));
+        gateThreshold.setBounds (k);
+        gateOnButton.setBounds (inputBox.reduced (10, 8).removeFromBottom (boxButtonsHeight).withTrimmedLeft (input.getWidth()));
+    }
+    output.setBounds (knobArea (outputBox));
+
+    const int ampW = 320;
     const int rest = (row.getWidth() - ampW - 2 * gap) / 2;
     ampPanel.setBounds (row.removeFromLeft (ampW));
     row.removeFromLeft (gap);
@@ -436,94 +391,117 @@ void RigEditor::layoutBoard()
     row.removeFromLeft (gap);
     cabPanel.setBounds (row);
 
-    // The amp's knobs sit inside its panel
-    auto extra = ampPanel.getExtraArea().translated (ampPanel.getX(), ampPanel.getY()).withTrimmedTop (22);
-    ampGain.setBounds (extra.removeFromLeft (extra.getWidth() / 2).withSizeKeepingCentre (64, 80));
-    ampLevel.setBounds (extra.withSizeKeepingCentre (64, 80));
+    // The amp's knobs sit inside its box, level with the others
+    {
+        auto extra = ampPanel.getExtraArea().translated (ampPanel.getX(), ampPanel.getY());
+        auto k = extra.withY (knobArea (inputBox).getY()).withHeight (knobArea (inputBox).getHeight());
+        ampGain.setBounds (k.removeFromLeft (k.getWidth() / 2));
+        ampLevel.setBounds (k);
+    }
 
-    tuner.setBounds (ampArea);
+    tuner.setBounds (ampArea.withTrimmedLeft (-4));   // the row's full width
 }
 
 //==============================================================================
-void TunerDisplay::update (const RigProcessor::TunerReading& r)
+namespace
 {
-    // Only confident readings move the display; a gap shows as "play a string"
+// As RoughTrack's tuner ribbon
+constexpr size_t readingsSmoothed = 5;
+constexpr double secondsNoteStays = 1.5;
+constexpr double inTuneCents = 1.0;
+constexpr double centsToBarsPerSecond = 0.25;
+constexpr float barWidthPixels = 28.0f;
+constexpr int noteWidth = 110, centsWidth = 110, statusWidth = 120;
+} // namespace
+
+void TunerDisplay::update (const RigProcessor::TunerReading& r, double secondsSinceLast)
+{
+    secondsSinceNote += secondsSinceLast;
+
     if (r.hz > 0.0f && r.confidence > 0.85f)
     {
         const auto n = fx::Note::fromHz (r.hz);
-        const auto name = juce::String (std::string (n.name));
-        if (name != note || n.octave != octave || framesSinceNote > 10)
-            cents = n.cents;                   // a new note: jump straight there
-        else
-            cents += 0.35f * (n.cents - cents); // the same note: steady the needle
-        note = name;
-        octave = n.octave;
-        framesSinceNote = 0;
+        if (n.midi != shownNote)
+            recentCents.clear();
+        shownNote = n.midi;
+        secondsSinceNote = 0.0;
+
+        // A plucked string starts sharp and wobbles: show the median of a few
+        recentCents.push_back (n.cents);
+        if (recentCents.size() > readingsSmoothed)
+            recentCents.erase (recentCents.begin());
+        auto sorted = recentCents;
+        std::sort (sorted.begin(), sorted.end());
+        shownCents = sorted[sorted.size() / 2];
     }
-    else
-        ++framesSinceNote;
+
+    if (shownNote >= 0 && secondsSinceNote > secondsNoteStays)
+    {
+        shownNote = -1;
+        recentCents.clear();
+    }
+
+    if (shownNote >= 0)
+        strobePhase += shownCents * centsToBarsPerSecond * secondsSinceLast;
+
     repaint();
+}
+
+void TunerDisplay::paintBand (juce::Graphics& g, juce::Rectangle<float> area, float barWidth, float offset, juce::Colour colour) const
+{
+    g.saveState();
+    g.reduceClipRegion (area.toNearestInt());
+    g.setColour (colour);
+    const auto start = std::fmod (offset, 2.0f * barWidth) - 2.0f * barWidth;
+    for (auto x = area.getX() + start; x < area.getRight(); x += 2.0f * barWidth)
+        g.fillRect (juce::Rectangle<float> (x, area.getY(), barWidth, area.getHeight()));
+    g.restoreState();
 }
 
 void TunerDisplay::paint (juce::Graphics& g)
 {
-    auto b = getLocalBounds().toFloat();
-    g.setColour (juce::Colour (0xff101010));
-    g.fillRoundedRectangle (b, 10.0f);
-    g.setColour (ink.withAlpha (0.3f));
-    g.drawRoundedRectangle (b.reduced (0.5f), 10.0f, 1.0f);
+    g.fillAll (background);   // covers the amp row
+    auto area = getLocalBounds().reduced (0, 18);
 
-    b.reduce (24.0f, 12.0f);
-    g.setColour (ink.withAlpha (0.6f));
-    g.setFont (rs::ui::pedalFont (13.0f));
-    g.drawText ("TUNER  -  output muted", b.removeFromTop (18.0f), juce::Justification::centredLeft);
+    g.setColour (fam::recess);
+    g.fillRoundedRectangle (area.toFloat(), 3.0f);
+    area.reduce (14, 10);
 
-    const bool showing = framesSinceNote < 20;   // about a second after the note fades
-    auto noteArea = b.removeFromLeft (170.0f);
-    if (! showing)
+    const bool hasNote = shownNote >= 0;
+    const bool inTune = hasNote && std::abs (shownCents) < inTuneCents;
+
+    auto noteArea = area.removeFromLeft (noteWidth);
+    auto centsArea = area.removeFromLeft (centsWidth);
+    auto statusArea = area.removeFromRight (statusWidth);
+
+    juce::String noteName = juce::String::fromUTF8 ("\xe2\x80\x93");   // en dash
+    if (hasNote)
     {
-        g.setColour (ink.withAlpha (0.5f));
-        g.setFont (rs::ui::pedalFont (16.0f, false));
-        g.drawText ("Play a string", noteArea, juce::Justification::centred);
+        const auto n = fx::Note::fromHz (440.0 * std::exp2 ((shownNote - 69) / 12.0));
+        noteName = juce::String (std::string (n.name)) + juce::String (n.octave);
     }
-    else
-    {
-        const bool inTune = std::abs (cents) < 3.0f;
-        const auto accent = inTune ? juce::Colour (0xff57d15a) : juce::Colour (0xffff8a65);
-        g.setColour (accent);
-        g.setFont (rs::ui::pedalFont (64.0f));
-        g.drawText (note, noteArea.withTrimmedBottom (18.0f), juce::Justification::centred);
-        g.setColour (ink.withAlpha (0.7f));
-        g.setFont (rs::ui::pedalFont (14.0f, false));
-        g.drawText (juce::String (octave) + "   " + (cents >= 0.0f ? "+" : "") + juce::String (cents, 1) + " cents",
-                    noteArea.removeFromBottom (20.0f), juce::Justification::centred);
-    }
+    g.setColour (inTune ? fam::green : (hasNote ? fam::cream : fam::dimText));
+    g.setFont (fam::font (static_cast<float> (noteArea.getHeight()) * 0.75f, true));
+    g.drawFittedText (noteName, noteArea, juce::Justification::centredLeft, 1, 0.6f);
 
-    // Meter: -50 .. +50 cents, a green zone in the middle, and the needle
-    auto meter = b.reduced (20.0f, 8.0f);
-    const float cy = meter.getCentreY();
-    auto xFor = [&] (float c) { return meter.getX() + (c + 50.0f) / 100.0f * meter.getWidth(); };
+    g.setFont (fam::font (15.0f));
+    g.setColour (inTune ? fam::green : fam::cream);
+    if (hasNote)
+        g.drawText (inTune ? juce::String ("In tune") : (shownCents > 0.0 ? "+" : "") + juce::String (shownCents, 1) + " cents",
+                    centsArea, juce::Justification::centredLeft);
 
-    g.setColour (juce::Colour (0xff57d15a).withAlpha (0.25f));
-    g.fillRect (juce::Rectangle<float> (xFor (-3.0f), cy - 26.0f, xFor (3.0f) - xFor (-3.0f), 52.0f));
-    for (int c = -50; c <= 50; c += 10)
-    {
-        const float x = xFor (static_cast<float> (c));
-        const float h = c == 0 ? 26.0f : (c % 50 == 0 ? 20.0f : 12.0f);
-        g.setColour (ink.withAlpha (c == 0 ? 0.9f : 0.45f));
-        g.drawLine (x, cy - h, x, cy + h, c == 0 ? 2.0f : 1.0f);
-    }
-    g.setColour (ink.withAlpha (0.5f));
-    g.setFont (rs::ui::pedalFont (11.0f, false));
-    g.drawText ("-50", juce::Rectangle<float> (xFor (-50.0f) - 20.0f, cy + 28.0f, 40.0f, 14.0f), juce::Justification::centred);
-    g.drawText ("+50", juce::Rectangle<float> (xFor (50.0f) - 20.0f, cy + 28.0f, 40.0f, 14.0f), juce::Justification::centred);
+    g.setColour (fam::dimText);
+    g.setFont (fam::font (13.0f));
+    g.drawText ("Output muted", statusArea.withTrimmedLeft (10), juce::Justification::centredRight);
 
-    if (showing)
-    {
-        const float x = xFor (juce::jlimit (-50.0f, 50.0f, cents));
-        g.setColour (std::abs (cents) < 3.0f ? juce::Colour (0xff57d15a) : juce::Colour (0xffff8a65));
-        g.fillRoundedRectangle (juce::Rectangle<float> (x - 3.0f, cy - 30.0f, 6.0f, 60.0f), 3.0f);
-    }
+    // The strobe: two bands, the lower twice as fine and twice as fast
+    const auto strobe = area.toFloat();
+    const auto colour = hasNote ? (inTune ? fam::green : fam::amber) : fam::widget;
+    g.setColour (juce::Colours::black);
+    g.fillRect (strobe);
+    const auto offset = static_cast<float> (strobePhase * 2.0 * barWidthPixels);
+    paintBand (g, strobe.withHeight (strobe.getHeight() / 2.0f).reduced (0.0f, 2.0f), barWidthPixels, offset, colour);
+    paintBand (g, strobe.withTrimmedTop (strobe.getHeight() / 2.0f).reduced (0.0f, 2.0f), barWidthPixels / 2.0f, offset * 2.0f, colour.withAlpha (0.7f));
 }
 
 //==============================================================================

@@ -237,11 +237,15 @@ int main (int argc, char* argv[])
         std::cout << "amp file: " << rig->getAmpFile (rig::AmpStage::amp).getFileName() << "\n";
     }
 
+    if (toneHz > 0.0)   // the tuner on before the editor opens, so it opens showing it
+        dynamic_cast<RigProcessor*> (processor.get())->apvts.getParameter (ParamIDs::tuner.getParamID())->setValueNotifyingHost (1.0f);
+
+    std::unique_ptr<juce::AudioProcessorEditor> editor (processor->createEditorAndMakeActive());
+
     if (toneHz > 0.0)
     {
-        auto* rig = dynamic_cast<RigProcessor*> (processor.get());
-        rig->apvts.getParameter (ParamIDs::tuner.getParamID())->setValueNotifyingHost (1.0f);
-
+        // Play the tone with the editor open, pumping messages between blocks
+        // so its timer reads the tuner and moves the strobe, as in a host
         juce::AudioBuffer<float> buffer (2, 512);
         juce::MidiBuffer midi;
         double phase = 0.0;
@@ -252,23 +256,16 @@ int main (int argc, char* argv[])
             {
                 buffer.setSample (0, i, static_cast<float> (0.3 * std::sin (phase)));
                 buffer.setSample (1, i, 0.0f);
-                phase += 2.0 * juce::MathConstants<double>::pi * toneHz / 48000.0;
+                phase += 2.0 * juce::MathConstants<double>::pi * toneHz / rate;
             }
             processor->processBlock (buffer, midi);
             if (b > 10)
                 outPeak = juce::jmax (outPeak, buffer.getMagnitude (0, 512));
-            if (b % 8 == 7)
-            {
-                const auto r = rig->readTuner();
-                const auto n = fx::Note::fromHz (r.hz);
-                std::cout << "tuner: " << r.hz << " Hz, confidence " << r.confidence << ", "
-                          << std::string (n.name) << n.octave << " " << n.cents << " cents\n";
-            }
+            juce::MessageManager::getInstance()->runDispatchLoopUntil (11);   // about real time
         }
         std::cout << "output peak while tuning: " << juce::Decibels::gainToDecibels (outPeak) << " dB\n";
     }
 
-    std::unique_ptr<juce::AudioProcessorEditor> editor (processor->createEditorAndMakeActive());
     const auto image = editor->createComponentSnapshot (editor->getLocalBounds(), true, scale);
 
     const juce::File out (juce::File::getCurrentWorkingDirectory().getChildFile (argv[1]));

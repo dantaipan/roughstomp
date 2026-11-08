@@ -11,18 +11,11 @@ juce::Font pedalFont (float height, bool bold)
 //==============================================================================
 PedalLookAndFeel::PedalLookAndFeel (const PedalColours& c) : colours (c)
 {
-    setColour (juce::BubbleComponent::backgroundColourId, juce::Colours::black.withAlpha (0.85f));
-    setColour (juce::BubbleComponent::outlineColourId, juce::Colours::transparentBlack);
-    setColour (juce::TooltipWindow::textColourId, colours.ink);
-
-    // Preset menus: a dark plate on the enclosure
+    // Menus on the enclosure: a dark plate (the menus they open are the family's)
     setColour (juce::ComboBox::backgroundColourId, juce::Colours::black.withAlpha (0.35f));
     setColour (juce::ComboBox::outlineColourId, juce::Colours::black.withAlpha (0.5f));
     setColour (juce::ComboBox::textColourId, colours.ink);
     setColour (juce::ComboBox::arrowColourId, colours.ink);
-    setColour (juce::PopupMenu::backgroundColourId, juce::Colour (0xff1c1c1c));
-    setColour (juce::PopupMenu::textColourId, colours.ink);
-    setColour (juce::PopupMenu::highlightedBackgroundColourId, colours.body);
 }
 
 void PedalLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int width, int height,
@@ -66,7 +59,7 @@ void PedalLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int wi
 
 int PedalLookAndFeel::getSliderThumbRadius (juce::Slider& slider)
 {
-    return slider.isVertical() ? 5 : LookAndFeel_V4::getSliderThumbRadius (slider);
+    return slider.isVertical() ? 5 : FamilyLookAndFeel::getSliderThumbRadius (slider);
 }
 
 void PedalLookAndFeel::drawLinearSlider (juce::Graphics& g, int x, int y, int width, int height,
@@ -75,7 +68,7 @@ void PedalLookAndFeel::drawLinearSlider (juce::Graphics& g, int x, int y, int wi
 {
     if (style != juce::Slider::LinearVertical)
     {
-        LookAndFeel_V4::drawLinearSlider (g, x, y, width, height, sliderPos, minSliderPos, maxSliderPos, style, slider);
+        FamilyLookAndFeel::drawLinearSlider (g, x, y, width, height, sliderPos, minSliderPos, maxSliderPos, style, slider);
         return;
     }
 
@@ -90,16 +83,12 @@ void PedalLookAndFeel::drawLinearSlider (juce::Graphics& g, int x, int y, int wi
     g.setColour (juce::Colours::black.withAlpha (0.6f));
     g.fillRoundedRectangle (slot, 1.5f);
 
-    // The cap
-    const float capW = juce::jmin (bounds.getWidth() - 2.0f, 13.0f), capH = 9.0f;
+    // The cap: the family's, small enough for a pedal
+    const float capW = juce::jmin (bounds.getWidth() - 2.0f, 13.0f), capH = 10.0f;
     const auto cap = juce::Rectangle<float> (capW, capH).withCentre ({ cx, sliderPos });
     g.setColour (juce::Colours::black.withAlpha (0.35f));
     g.fillRoundedRectangle (cap.translated (0.0f, 1.5f), 2.0f);
-    g.setGradientFill (juce::ColourGradient (colours.knob.brighter (0.5f), cap.getTopLeft(),
-                                             colours.knob, cap.getBottomLeft(), false));
-    g.fillRoundedRectangle (cap, 2.0f);
-    g.setColour (juce::Colours::white);
-    g.drawLine (cap.getX() + 2.0f, sliderPos, cap.getRight() - 2.0f, sliderPos, 1.5f);
+    drawCap (g, cap, true);
 }
 
 //==============================================================================

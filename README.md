@@ -25,9 +25,10 @@ Plugins (VST3, AU and a standalone app each):
 
   Delay and the modulation pedals have a *Sync* menu that follows the host tempo (120 BPM standalone); while synced, their Time or Rate knob is ignored, and while the host plays, synced modulation lines up with the beat. Delay and the reverbs let their tails ring out when switched off.
 - **Presets:** the bar at the top. Arrows step through presets, the name opens the menu, *Save* saves (over your own preset, or as a new one). Factory presets set pedals and settings but keep your amp and cab; your own presets save everything, including the files. A `*` means you've changed something since loading. They're `.rsrig` files in `~/Library/Application Support/RoughStomp/Presets` (*Show Presets Folder* in the menu).
-- **Tuner:** the *TUNER* button. Mutes the output while it's on.
+- **Tuner:** the *Tuner* button: a strobe, as in RoughTrack (bands drift right when sharp, left when flat, stand still in tune). Mutes the output while it's on.
 - **Gate:** next to *Input*. Switch it on and turn *GATE* up until the hiss between notes goes.
 - **Window:** drag the corner to resize (70–150%); sessions remember the size.
+- **Look:** everything around the pedals matches RoughTrack (same colours, buttons, menus, knobs and strobe tuner, from `ui/include/rs_ui/Family.h`); only the pedals look like hardware, on purpose.
 - **Amp:** *Load...* a `.nam` capture. *Gain* drives the capture, *Level* sets what comes out (captures are levelled to the same loudness automatically).
 - **Power amp:** optional. Leave it empty for normal captures, which already include the power amp. For a true pre/power split, load a preamp-only capture as the amp and a power-amp capture here. It runs once per stereo side, so it costs twice the CPU of the amp.
 - **Cab:** *Load...* an IR (WAV/AIFF). Switch it off for "full rig" captures that already include a cab.
