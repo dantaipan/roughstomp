@@ -32,6 +32,15 @@ inline float hardClip (float x, float threshold = 1.0f) noexcept
     return std::clamp (x, -threshold, threshold);
 }
 
+/** Hard clip with a rounded knee: x / (1 + x^4)^(1/4). Sounds close to
+    hardClip() but has no sharp corner, so it makes far less aliasing.
+    Two square roots, so it's cheap. */
+inline float hardKnee (float x) noexcept
+{
+    const float x2 = x * x;
+    return x / std::sqrt (std::sqrt (1.0f + x2 * x2));
+}
+
 /** Diode-style asymmetric clip: the positive half approaches +1, the
     negative half clips earlier and harder at -negativeLimit. The asymmetry
     adds even harmonics (warmer, more "tube") and a DC offset, so follow it

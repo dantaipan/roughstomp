@@ -12,6 +12,7 @@ namespace ParamIDs
     inline const juce::ParameterID level  { "level",  1 };
     inline const juce::ParameterID mix    { "mix",    1 };
     inline const juce::ParameterID bypass { "bypass", 1 };
+    inline const juce::ParameterID mode   { "mode",   1 };
 }
 
 /** Plugin wrapper: owns the parameters and presets, and pushes values into
@@ -65,6 +66,9 @@ private:
     juce::AudioParameterFloat* level = nullptr;
     juce::AudioParameterFloat* mix   = nullptr;
     juce::AudioParameterBool*  bypass = nullptr;
+    juce::AudioParameterChoice* mode = nullptr;
+
+    fx::Overdrive::Parameters currentParameters() const;
 
     int currentProgram = 0;
     fx::Overdrive overdrive;

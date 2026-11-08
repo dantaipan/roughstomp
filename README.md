@@ -80,7 +80,8 @@ Breakpoints in `plugins/` and `fx-core/` hit inside the host.
 - `fx-core/` — DSP only, plain C++20 with no JUCE dependency; linked by plugins and RoughTrack
   - `Smoother.h`, `Filters.h`, `Waveshapers.h`, `Oversampler.h` — shared building blocks
   - `effects/` — complete effects implementing `fx::Effect`
-- `plugins/Overdrive/` — JUCE wrapper (parameters, state, editor)
+- `ui/` — shared pedal GUI (`rs::ui`): look-and-feel, knobs, footswitch, LED, mini toggle, enclosure
+- `plugins/Overdrive/` — JUCE wrapper (parameters, presets, state, editor)
 - `tools/validate.sh` — pluginval runner
 - `tools/render/` — rs-render offline renderer
 

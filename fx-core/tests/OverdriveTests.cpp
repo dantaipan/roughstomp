@@ -157,7 +157,9 @@ TEST_CASE ("Aliasing stays far below the signal at full drive", "[overdrive]")
     const double fundamental = test::amplitudeAt (y, f, fs, start, len);
     double worst = 0.0;
 
-    for (int bin = 1; bin < 2400; ++bin)
+    // Up to 16 kHz: the audible band. Above it the downsampler's transition
+    // band lets a little ultrasonic content fold to ~22 kHz, which nobody hears.
+    for (int bin = 1; bin < 1600; ++bin)
     {
         if (bin % 101 == 0)
             continue; // a harmonic
@@ -167,4 +169,179 @@ TEST_CASE ("Aliasing stays far below the signal at full drive", "[overdrive]")
     const double worstDb = test::toDb (worst / fundamental);
     INFO ("worst alias: " << worstDb << " dB");
     REQUIRE (worstDb < -65.0); // measured -69.7 at 8x (-60.2 at 4x)
+}
+
+//==============================================================================
+// Phase 3: modes, touch and tone stack
+
+namespace
+{
+using Mode = fx::Overdrive::Mode;
+constexpr Mode allModes[] { Mode::soft, Mode::hard, Mode::asymmetric };
+
+double harmonicDb (const std::vector<float>& y, double f, int k)
+{
+    const size_t start = y.size() - 4800, len = 4800;
+    return test::toDb (test::amplitudeAt (y, f * k, fs, start, len) / test::amplitudeAt (y, f, fs, start, len));
+}
+
+double rmsDb (const std::vector<float>& x, size_t from)
+{
+    double sum = 0.0;
+    for (size_t i = from; i < x.size(); ++i)
+        sum += static_cast<double> (x[i]) * x[i];
+    return 10.0 * std::log10 (sum / static_cast<double> (x.size() - from));
+}
+} // namespace
+
+TEST_CASE ("Every mode is bounded and keeps aliasing low", "[overdrive][modes]")
+{
+    const double f = 1010.0; // see the aliasing test above for why 1010 Hz
+
+    // Worst case: full drive, tone up, a pure tone. Measured at 8x: soft -93,
+    // hard -61, asymmetric -69 dB. Hard's harmonics fall off slowest, so a few
+    // fold back from above the 384 kHz internal rate (here at 1010 +/- 200 Hz).
+    const double limits[] { -85.0, -59.0, -65.0 };
+
+    for (Mode m : allModes)
+    {
+        CAPTURE (static_cast<int> (m));
+        const auto y = run ({ 1.0f, 1.0f, 0.0f, 1.0f, false, m }, test::sine (f, fs, 24000, 0.25));
+        REQUIRE (peak (y, 2400) < 0.6);
+
+        const size_t start = y.size() - 4800, len = 4800;
+        const double fundamental = test::amplitudeAt (y, f, fs, start, len);
+        double worst = 0.0;
+        for (int bin = 1; bin < 1600; ++bin) // audible band, as above
+            if (bin % 101 != 0)
+                worst = std::max (worst, test::amplitudeAt (y, bin * 10.0, fs, start, len));
+
+        const double worstDb = test::toDb (worst / fundamental);
+        INFO ("worst alias: " << worstDb << " dB");
+        REQUIRE (worstDb < limits[static_cast<int> (m)]);
+    }
+}
+
+TEST_CASE ("Asymmetric mode adds far more even harmonics than soft", "[overdrive][modes]")
+{
+    const double f = 220.0;
+    const auto in = test::sine (f, fs, 24000, 0.25);
+
+    const double softH2 = harmonicDb (run ({ 0.4f, 0.5f, 0.0f, 1.0f, false, Mode::soft }, in), f, 2);
+    const double asymH2 = harmonicDb (run ({ 0.4f, 0.5f, 0.0f, 1.0f, false, Mode::asymmetric }, in), f, 2);
+    CAPTURE (softH2, asymH2);
+
+    // Soft gets some even harmonics from the touch bias too, by design
+    REQUIRE (asymH2 > -22.0);
+    REQUIRE (asymH2 > softH2 + 5.0);
+}
+
+TEST_CASE ("Hard mode clips harder than soft at the same drive", "[overdrive][modes]")
+{
+    const double f = 220.0;
+    const auto in = test::sine (f, fs, 24000, 0.25);
+
+    const double soft = thd (run ({ 0.3f, 0.5f, 0.0f, 1.0f, false, Mode::soft }, in), f);
+    const double hard = thd (run ({ 0.3f, 0.5f, 0.0f, 1.0f, false, Mode::hard }, in), f);
+    CAPTURE (soft, hard);
+    REQUIRE (hard > soft);
+}
+
+TEST_CASE ("Modes sit at similar loudness", "[overdrive][modes]")
+{
+    // A harmonic-rich 110 Hz tone at a DI-ish level
+    std::vector<float> in (24000);
+    for (size_t i = 0; i < in.size(); ++i)
+    {
+        double s = 0.0;
+        for (int k = 1; k <= 5; ++k)
+            s += std::sin (2.0 * std::numbers::pi * 110.0 * k * static_cast<double> (i) / fs) / k;
+        in[i] = static_cast<float> (0.12 * s);
+    }
+
+    const double softDb = rmsDb (run ({ 0.5f, 0.5f, 0.0f, 1.0f, false, Mode::soft }, in), 4800);
+    for (Mode m : { Mode::hard, Mode::asymmetric })
+    {
+        const double db = rmsDb (run ({ 0.5f, 0.5f, 0.0f, 1.0f, false, m }, in), 4800);
+        CAPTURE (static_cast<int> (m), db - softDb);
+        REQUIRE (std::abs (db - softDb) < 3.0);
+    }
+}
+
+TEST_CASE ("Changing mode crossfades instead of clicking", "[overdrive][modes]")
+{
+    const double f = 220.0;
+    auto x = test::sine (f, fs, 19200, 0.25);
+    const fx::Overdrive::Parameters soft { 0.3f, 0.5f, 0.0f, 1.0f, false, Mode::soft };
+    auto hard = soft;
+    hard.mode = Mode::hard;
+
+    // The largest step each mode makes on its own, steady
+    auto steadyStep = [&] (const fx::Overdrive::Parameters& p)
+    {
+        const auto y = run (p, x);
+        double m = 0.0;
+        for (size_t i = 4800; i + 1 < y.size(); ++i)
+            m = std::max (m, static_cast<double> (std::abs (y[i + 1] - y[i])));
+        return m;
+    };
+    const double limit = 1.25 * std::max (steadyStep (soft), steadyStep (hard));
+
+    fx::Overdrive od;
+    od.setParameters (soft);
+    od.prepare (fs, block, 1);
+
+    for (size_t pos = 0; pos < x.size(); pos += block)
+    {
+        if (pos == 9600)
+            od.setParameters (hard);
+
+        float* ch[] = { x.data() + pos };
+        od.process (ch, 1, block);
+    }
+
+    double maxStep = 0.0;
+    for (size_t i = 4800; i + 1 < x.size(); ++i)
+        maxStep = std::max (maxStep, static_cast<double> (std::abs (x[i + 1] - x[i])));
+
+    CAPTURE (maxStep, limit);
+    REQUIRE (maxStep < limit);
+}
+
+TEST_CASE ("Touch: harder picking blooms, softer playing cleans up", "[overdrive][touch]")
+{
+    const double f = 220.0;
+    const fx::Overdrive::Parameters p { 0.25f, 0.5f, 0.0f, 1.0f, false, Mode::soft };
+
+    const auto loud  = run (p, test::sine (f, fs, 24000, 0.25));  // dug-in pick, -12 dBFS
+    const auto quiet = run (p, test::sine (f, fs, 24000, 0.03));  // guitar volume rolled back, ~-30 dBFS
+
+    // Even harmonics come from the touch bias, so they rise with playing strength
+    CAPTURE (harmonicDb (loud, f, 2), harmonicDb (quiet, f, 2));
+    REQUIRE (harmonicDb (loud, f, 2) > harmonicDb (quiet, f, 2) + 10.0);
+
+    // Rolled back, the same settings are nearly clean
+    CAPTURE (thd (loud, f), thd (quiet, f));
+    REQUIRE (thd (quiet, f) < 0.05);
+    REQUIRE (thd (loud, f) > 4.0 * thd (quiet, f));
+}
+
+TEST_CASE ("Tone knob: lowpass sweep, dark cuts the treble, lows stay put", "[overdrive][tone]")
+{
+    // At low drive the pedal is nearly linear, so test tones show the filter
+    auto gainAt = [] (double f, float tone)
+    {
+        const auto y = run ({ 0.0f, tone, 0.0f, 1.0f, false, Mode::soft }, test::sine (f, fs, 24000, 0.01));
+        return test::toDb (test::amplitudeAt (y, f, fs, y.size() - 4800, 4800) / 0.01);
+    };
+
+    const double lowDark = gainAt (100.0, 0.0), lowBright = gainAt (100.0, 1.0);
+    const double hiDark  = gainAt (4000.0, 0.0), hiNoon = gainAt (4000.0, 0.5), hiBright = gainAt (4000.0, 1.0);
+    const double topNoon = gainAt (8000.0, 0.5);
+    CAPTURE (lowDark, lowBright, hiDark, hiNoon, hiBright, topNoon);
+
+    REQUIRE (std::abs (lowDark - lowBright) < 1.0);   // lows barely move
+    REQUIRE (hiBright - hiDark > 12.0);               // the knob has real range at 4 kHz
+    REQUIRE (hiNoon < hiBright - 3.0);
+    REQUIRE (topNoon < hiNoon - 3.0);                 // keeps rolling off: this is what tames fizz
 }

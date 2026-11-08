@@ -23,7 +23,8 @@ add_subdirectory(external/JUCE)
 # Shared DSP library (no plugin code)
 add_subdirectory(fx-core)
 
-# Plugins
+# Shared pedal GUI (JUCE), then the plugins
+add_subdirectory(ui)
 add_subdirectory(plugins/Overdrive)
 
 # Offline tools

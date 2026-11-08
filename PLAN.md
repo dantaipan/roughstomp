@@ -121,14 +121,18 @@ in → [oversample ×8] → drive (boost above ~720 Hz, lows at unity) → pre-c
 
 ## Phase 3 — Overdrive v2 (character and realism)
 
-- [ ] Asymmetric clipping option (even harmonics)
-- [ ] Clipping "Mode" switch: soft (TS-style), hard (distortion), asymmetric
-- [ ] Input-level sensitivity: responds to picking dynamics and guitar volume
-- [ ] Better tone stack (e.g. Big Muff-style or Tube Screamer tone network approximation)
-- [ ] Optional: circuit-modelled stage (wave digital filters or nodal analysis) as a learning exercise
-- [ ] Shared `ui/` pedal look-and-feel reused by every future pedal
+- [x] Asymmetric clipping option (even harmonics)
+- [x] Clipping "Mode" switch: soft (TS-style), hard (distortion), asymmetric — each with its own voicing (focus, gain, fizz filter, loudness trim); switching crossfades
+- [x] Input-level sensitivity: responds to picking dynamics and guitar volume — envelope-driven clipper bias: dug-in picking blooms with even harmonics, rolled-back volume cleans up
+- [x] Better tone stack (e.g. Big Muff-style or Tube Screamer tone network approximation) — tried a TS-style 700 Hz shelf; it lost the blind A/B (too much fizz above 3 kHz), so the tone stays a 600 Hz–8 kHz swept lowpass
+- [ ] Optional (deferred): circuit-modelled stage (wave digital filters or nodal analysis) as a learning exercise
+- [x] Shared `ui/` pedal look-and-feel reused by every future pedal — `rs::ui`: look-and-feel, knob, footswitch, LED, mini toggle, enclosure
 
 **Done when:** v2 is a clear step up from v1 in blind A/B listening.
+
+*Result:* round 1 (v2 Soft with the 700 Hz shelf) lost 0–3 to v1: too much fizz above 3 kHz.
+After restoring v1's swept-lowpass tone, round 2 went 3–1 to v2: Hard beat v1 at medium
+and high drive (fuller, warmer), Asym split 1–1 (very close). Soft now matches v1's tone.
 
 ---
 

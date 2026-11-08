@@ -3,20 +3,25 @@
 
 namespace
 {
+using Mode = fx::Overdrive::Mode;
+
 struct Preset
 {
     const char* name;
     float drive, tone, level, mix; // knob units: 0-10, 0-10, dB, %
+    Mode mode;
 };
 
 // Index 0 is the default state
 constexpr Preset presets[] {
-    { "Default",         5.0f, 5.0f,  0.0f, 100.0f },
-    { "Edge of Breakup", 1.5f, 5.5f,  0.5f, 100.0f },
-    { "Classic Drive",   5.5f, 5.0f,  0.0f, 100.0f },
-    { "Bright Crunch",   6.5f, 8.0f, -1.0f, 100.0f },
-    { "Thick Lead",      9.0f, 3.5f,  0.0f, 100.0f },
-    { "Bass Blend",      7.0f, 4.0f,  0.0f,  45.0f },
+    { "Default",         5.0f, 5.0f,  0.0f, 100.0f, Mode::soft },
+    { "Edge of Breakup", 1.5f, 5.5f,  0.5f, 100.0f, Mode::soft },
+    { "Classic Drive",   5.5f, 5.0f,  0.0f, 100.0f, Mode::soft },
+    { "Warm Tube Push",  3.5f, 5.0f,  0.0f, 100.0f, Mode::asymmetric },
+    { "Bright Crunch",   5.0f, 7.5f, -1.0f, 100.0f, Mode::hard },
+    { "Full Distortion", 8.5f, 6.0f, -1.0f, 100.0f, Mode::hard },
+    { "Thick Lead",      9.0f, 3.5f,  0.0f, 100.0f, Mode::soft },
+    { "Bass Blend",      7.0f, 4.0f,  0.0f,  45.0f, Mode::soft },
 };
 
 template <typename T>
@@ -41,6 +46,13 @@ OverdriveProcessor::OverdriveProcessor()
     level  = getParam<juce::AudioParameterFloat> (apvts, ParamIDs::level);
     mix    = getParam<juce::AudioParameterFloat> (apvts, ParamIDs::mix);
     bypass = getParam<juce::AudioParameterBool>  (apvts, ParamIDs::bypass);
+    mode   = getParam<juce::AudioParameterChoice> (apvts, ParamIDs::mode);
+}
+
+fx::Overdrive::Parameters OverdriveProcessor::currentParameters() const
+{
+    return { drive->get() / 10.0f, tone->get() / 10.0f, level->get(), mix->get() / 100.0f,
+             bypass->get(), static_cast<Mode> (mode->getIndex()) };
 }
 
 juce::AudioProcessorValueTreeState::ParameterLayout OverdriveProcessor::createLayout()
@@ -68,14 +80,18 @@ juce::AudioProcessorValueTreeState::ParameterLayout OverdriveProcessor::createLa
 
     layout.add (std::make_unique<AudioParameterBool> (ParamIDs::bypass, "Bypass", false));
 
+    // Order matches fx::Overdrive::Mode; append new modes at the end so saved sessions keep theirs
+    layout.add (std::make_unique<AudioParameterChoice> (ParamIDs::mode, "Mode",
+                                                        StringArray { "Soft", "Hard", "Asymmetric" },
+                                                        static_cast<int> (d.mode)));
+
     return layout;
 }
 
 void OverdriveProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
     // Start on the current settings rather than ramping up from defaults
-    overdrive.setParameters ({ drive->get() / 10.0f, tone->get() / 10.0f, level->get(),
-                               mix->get() / 100.0f, bypass->get() });
+    overdrive.setParameters (currentParameters());
     overdrive.prepare (sampleRate, samplesPerBlock, getTotalNumOutputChannels());
     setLatencySamples (overdrive.getLatencySamples());
 }
@@ -103,8 +119,7 @@ void OverdriveProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
     for (int ch = numIn; ch < numOut; ++ch)
         buffer.copyFrom (ch, 0, buffer, 0, 0, buffer.getNumSamples());
 
-    overdrive.setParameters ({ drive->get() / 10.0f, tone->get() / 10.0f, level->get(),
-                               mix->get() / 100.0f, bypass->get() });
+    overdrive.setParameters (currentParameters());
     overdrive.process (buffer.getArrayOfWritePointers(), numOut, buffer.getNumSamples());
 }
 
@@ -141,6 +156,7 @@ void OverdriveProcessor::setCurrentProgram (int index)
     set (tone,  p.tone);
     set (level, p.level);
     set (mix,   p.mix);
+    set (mode,  static_cast<float> (p.mode));
 }
 
 //==============================================================================

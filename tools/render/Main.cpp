@@ -44,7 +44,7 @@ const std::map<juce::String, EffectInfo>& registry()
                         g->setGainDecibels (param (p, "db", 0.0f));
                         return g;
                     } } },
-        { "overdrive", { "drive=<0..10> tone=<0..10> level=<dB> mix=<0..100>  (defaults 5 5 0 100)",
+        { "overdrive", { "drive=<0..10> tone=<0..10> level=<dB> mix=<0..100> mode=<0 soft|1 hard|2 asym>  (defaults 5 5 0 100 0)",
                          [] (const Params& p)
                          {
                              auto od = std::make_unique<fx::Overdrive>();
@@ -52,7 +52,9 @@ const std::map<juce::String, EffectInfo>& registry()
                                                   param (p, "tone", 5.0f) / 10.0f,
                                                   param (p, "level", 0.0f),
                                                   param (p, "mix", 100.0f) / 100.0f,
-                                                  false });
+                                                  false,
+                                                  static_cast<fx::Overdrive::Mode> (juce::jlimit (0, fx::Overdrive::numModes - 1,
+                                                                                                  juce::roundToInt (param (p, "mode", 0.0f)))) });
                              return od;
                          } } },
     };
