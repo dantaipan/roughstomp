@@ -36,6 +36,9 @@ commit and push here, then bump the pin in RoughTrack and check its
   picture
 - A deliberate change to a pedal's sound needs its regression references
   rewritten (`RS_UPDATE_REGRESSION=1 ... "[regression]"`) and reviewed
+- `tools/make_release.sh` makes the notarized download (the `dist` preset:
+  universal, Developer ID); it uploads to Apple's notary service, so only run
+  it when asked
 - Branding is "RoughStomp" (manufacturer code Rstm, bundle IDs com.roughstomp.*)
 - fx-core and the NAM library are built with hidden symbols so the plugin can
   load inside RoughTrack, which has its own copy of NAM; keep it that way

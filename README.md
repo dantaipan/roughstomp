@@ -182,6 +182,29 @@ target_link_libraries(RoughTrack PRIVATE fx::core)
 
 fx-core's tests are only built when `ROUGHSTOMP_BUILD_TESTS` is ON, which it isn't inside RoughTrack, so nothing else is needed.
 
+## Releasing
+
+`tools/make_release.sh` builds the standalone app and the VST3 and AU plugins
+as universal binaries (Apple Silicon and Intel), signs them with your
+Developer ID, has Apple notarize them, and wraps them in a signed, notarized
+disk image: `dist/RoughStomp-<version>.dmg`. It needs a Developer ID
+Application certificate and notarytool credentials saved once (the same ones
+RoughTrack uses work):
+
+```bash
+xcrun notarytool store-credentials roughtrack-notary --apple-id <email> --team-id <team>
+tools/make_release.sh
+```
+
+The disk image holds `RoughStomp.app` (drag it to Applications) and a
+`Plugins` folder with the two plugins, links to the plugin folders and a note
+on installing them. The version comes from `project()` in `CMakeLists.txt`.
+
+Every build is signed with the hardened runtime (an Apple Development
+certificate if there is one, otherwise ad hoc), so a release has no
+surprises. The standalone app asks for microphone access the first time, and
+starts with the input on unless it's a microphone (feedback).
+
 ## Licence
 
 AGPL-3.0, like RoughTrack (see LICENSE).

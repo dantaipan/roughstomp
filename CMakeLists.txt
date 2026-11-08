@@ -10,6 +10,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)   # for clangd
 
 option(ROUGHSTOMP_BUILD_TESTS "Build fx-core unit tests (Catch2)" ON)
+option(ROUGHSTOMP_COPY_PLUGINS "Copy built plugins to ~/Library/Audio/Plug-Ins" ON)
 option(ROUGHSTOMP_BUILD_HOST  "Build JUCE's AudioPluginHost for testing" ON)
 option(ROUGHSTOMP_BUILD_TOOLS "Build the rs-render offline renderer" ON)
 
@@ -36,6 +37,7 @@ if(ROUGHSTOMP_BUILD_TOOLS)
     add_subdirectory(tools/render)
     add_subdirectory(tools/host-render)
     add_subdirectory(tools/rig-snapshot)
+    add_subdirectory(tools/make-icon)
 endif()
 
 # Test host, built into build/<preset>/host/

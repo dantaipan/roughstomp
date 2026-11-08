@@ -207,6 +207,7 @@ Loose ends from earlier phases, done first:
 - [x] RoughTrack uses `rs_ui/Family.h` directly (RoughStomp is public at github.com/dantaipan/roughstomp; RoughTrack fetches it at a pinned commit) — on RoughTrack's `family-look` branch, to merge
 
 - [x] More drives: Fuzz (vintage two-transistor style, with Bias for the gated sound), Big Fuzz (cascaded, sustaining, scooped tone), Clean Drive (transparent: clean side kept, treble) — shared 8x-oversampled `DrivePedal` base; levels fitted to sit with the Overdrive
+- [x] Notarized download: `tools/make_release.sh` makes `dist/RoughStomp-<version>.dmg` with the standalone app and the VST3/AU (universal, Developer ID, hardened runtime, notarized and stapled); the app has its own icon (`tools/make-icon`) and starts with the input on
 - [ ] Stereo or dual-amp rigs
 - [ ] Optional (deferred): circuit-modelled stage (wave digital filters or nodal analysis) as a learning exercise
 - [ ] CLAP format
