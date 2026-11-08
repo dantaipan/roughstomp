@@ -2,9 +2,11 @@
 
 #include "fx/effects/Gain.h"
 #include "fx/effects/Overdrive.h"
+#include "pedals/LoopPedals.h"
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 
 namespace fx
 {
@@ -15,6 +17,40 @@ int PedalInfo::indexOf (std::string_view paramId) const noexcept
         if (params[i].id == paramId)
             return static_cast<int> (i);
     return -1;
+}
+
+float ParamInfo::fromNormalised (float normalised) const noexcept
+{
+    const float t = std::clamp (normalised, 0.0f, 1.0f);
+    if (kind != Kind::continuous)
+        return std::round (minValue + t * (maxValue - minValue));
+    if (taper == Taper::log && minValue > 0.0f)
+        return minValue * std::pow (maxValue / minValue, t);
+    return minValue + t * (maxValue - minValue);
+}
+
+float ParamInfo::toNormalised (float plain) const noexcept
+{
+    if (! (maxValue > minValue))
+        return 0.0f;
+    const float v = std::clamp (plain, minValue, maxValue);
+    if (kind == Kind::continuous && taper == Taper::log && minValue > 0.0f)
+        return std::log (v / minValue) / std::log (maxValue / minValue);
+    return (v - minValue) / (maxValue - minValue);
+}
+
+BasicPedal::BasicPedal (const PedalInfo& i) : pedalInfo (i)
+{
+    for (const auto& p : i.params)
+        values.push_back (p.defaultValue);
+}
+
+void BasicPedal::setParameter (int index, float v) noexcept
+{
+    if (index < 0 || index >= static_cast<int> (values.size()))
+        return;
+    const auto& p = pedalInfo.params[static_cast<size_t> (index)];
+    values[static_cast<size_t> (index)] = std::clamp (v, p.minValue, p.maxValue);
 }
 
 namespace
@@ -143,7 +179,10 @@ template <typename P>
 constexpr Entry entry() { return { &P::staticInfo, [] () -> std::unique_ptr<Pedal> { return std::make_unique<P>(); } }; }
 
 // Append new pedals at the end; the order is what pedal menus show
-constexpr std::array entries { entry<OverdrivePedal>(), entry<BoostPedal>() };
+constexpr std::array entries { entry<OverdrivePedal>(), entry<BoostPedal>(),
+                               entry<EqPedal>(), entry<ChorusPedal>(), entry<DelayPedal>(), entry<ReverbPedal>(),
+                               entry<TremoloPedal>(), entry<VibratoPedal>(), entry<FlangerPedal>(), entry<PhaserPedal>(),
+                               entry<SpringPedal>() };
 } // namespace
 
 namespace registry

@@ -8,7 +8,7 @@ const juce::Colour ink        { 0xfff3e6cf };
 const juce::Colour warning    { 0xffff8a65 };
 
 constexpr int margin = 12;
-constexpr int slotWidth = 148, slotGap = 6, slotHeight = 244;
+constexpr int slotWidth = 148, slotGap = 6, slotHeight = 300;
 constexpr int sideWidth = 112;
 constexpr int labelHeight = 20;
 constexpr int ampRowHeight = 150;

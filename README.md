@@ -8,7 +8,16 @@ Plugins (VST3, AU and a standalone app each):
 
 ## Using the rig
 
-- **Pedals:** pick a pedal from the menu above a slot. Footswitch = on/off. Six slots before the amp, six in the FX loop.
+- **Pedals:** pick a pedal from the menu above a slot. Footswitch = on/off. Six slots before the amp, six in the FX loop. Any pedal goes in any slot:
+  - *Overdrive*, *Boost*: for in front of the amp
+  - *EQ*: 7-band graphic EQ (100 Hz to 6.4 kHz, ±15 dB) and level, on sliders, with its curve drawn behind them
+  - *Chorus*: 1–3 voices, stereo width
+  - *Tremolo*: sine, triangle or square; *Spread* pans it across the sides (100% = auto-pan)
+  - *Vibrato*, *Flanger*, *Phaser*
+  - *Delay*: digital, tape or ping-pong
+  - *Reverb*: room, hall or plate; *Spring*: two springs with dwell
+  
+  Delay and the modulation pedals have a *Sync* menu that follows the host tempo (120 BPM standalone); while synced, their Time or Rate knob is ignored, and while the host plays, synced modulation lines up with the beat. Delay and the reverbs let their tails ring out when switched off.
 - **Amp:** *Load...* a `.nam` capture. *Gain* drives the capture, *Level* sets what comes out (captures are levelled to the same loudness automatically).
 - **Power amp:** optional. Leave it empty for normal captures, which already include the power amp. For a true pre/power split, load a preamp-only capture as the amp and a power-amp capture here. It runs once per stereo side, so it costs twice the CPU of the amp.
 - **Cab:** *Load...* an IR (WAV/AIFF). Switch it off for "full rig" captures that already include a cab.
@@ -84,8 +93,18 @@ $H $P di.wav out.wav Rig.loop1=overdrive loopMix=50 pre1_on=0 input=3
 
 `id=value` sets a parameter in its own units; `Rig.key=value` sets a rig
 attribute (`ampFile`, `powerFile`, `cabFile`, `pre1`..`pre6`, `loop1`..`loop6`
-with pedal ids like `overdrive` or `boost`). Slot knobs are `pre1_k1`.. and run
-0..1 across the pedal's range. Prints latency, peak and RMS.
+with pedal ids like `overdrive`, `boost`, `eq`, `chorus`, `delay`, `reverb`,
+`tremolo`, `vibrato`, `flanger`, `phaser`, `spring`).
+Slot knobs are `pre1_k1`.. and run 0..1 across the pedal's range (log for
+frequencies and times). A pedal set this way keeps the knobs' values rather
+than its own defaults, so set every knob you care about. Prints latency, peak and RMS.
+
+`rs-rig-snapshot` saves a picture of the rig's editor, set up with the same
+kind of settings, for checking the GUI without a DAW:
+
+```bash
+build/release/tools/rig-snapshot/rs-rig-snapshot_artefacts/Release/rs-rig-snapshot editor.png Rig.loop1=delay --scale=2
+```
 
 The build copies the plugin to `~/Library/Audio/Plug-Ins/VST3` and `.../Components` automatically, so DAWs see it after a rescan.
 

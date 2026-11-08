@@ -3,6 +3,12 @@ add_library(fx-core STATIC
     src/Oversampler.cpp
     src/Pedals.cpp
     src/RateBridge.cpp
+    src/pedals/Chorus.cpp
+    src/pedals/Delay.cpp
+    src/pedals/Eq.cpp
+    src/pedals/Modulation.cpp
+    src/pedals/Reverb.cpp
+    src/pedals/Spring.cpp
     src/effects/Gain.cpp
     src/effects/Overdrive.cpp
 )
@@ -45,6 +51,8 @@ if(ROUGHSTOMP_BUILD_TESTS)
         tests/ChainTests.cpp
         tests/FilterTests.cpp
         tests/GainTests.cpp
+        tests/LoopPedalTests.cpp
+        tests/ModulationTests.cpp
         tests/OverdriveTests.cpp
         tests/OversamplerTests.cpp
         tests/PedalTests.cpp

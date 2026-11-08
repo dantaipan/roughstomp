@@ -201,6 +201,9 @@ private:
 
     double currentSampleRate = 48000.0;
     int maxBlock = 512;
+    double tempo = 120.0;   // audio thread: the host's transport this block
+    double quarterNotes = 0.0;
+    bool playing = false;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (RigProcessor)
 };

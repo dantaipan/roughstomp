@@ -168,16 +168,19 @@ and high drive (fuller, warmer), Asym split 1–1 (very close). Soft now matches
 ## Phase 5 — Loop effects
 
 Shared building blocks first:
-- [ ] `Lfo`: sine, triangle, square, random/S&H; rate in Hz or tempo-synced from host play head; stereo phase offset
-- [ ] `DelayLine`: circular buffer with fractional delay (linear, then cubic/Lagrange or allpass interpolation)
+- [x] `Lfo`: sine, triangle, square, random/S&H; rate in Hz; stereo phase offset — square has short slopes and random glides, so neither clicks
+- [x] Tempo-synced LFO rates — a Sync menu (1 bar to 1/16, triplets) on every modulation pedal; the host tempo reaches pedals through `Pedal::setTempo`
+- [x] Lock synced LFOs' phase to the host's bar position — while the host plays, cycle n starts on beat n x the division (`Pedal::setPlayPosition`)
+- [x] `DelayLine`: circular buffer with fractional delay — linear and 4-point Lagrange (cubic); allpass not needed so far
 
 Pedals (all stereo):
-- [ ] **EQ** — graphic or parametric, for shaping before the power amp
-- [ ] **Chorus** — modulated 10–30 ms delay mixed with dry; optional multi-voice
-- [ ] **Delay** — digital, then tape/analog flavours and ping-pong; tempo sync
-- [ ] **Reverb** — FDN first (room/hall), then spring and plate
-- [ ] **Tremolo**, **Vibrato**, **Flanger**, **Phaser**
-- [ ] Tests: no clicks when rate/depth change, tempo sync accuracy, interpolation quality (no zipper or HF loss)
+- [x] **EQ** — 7-band graphic (octaves from 100 Hz, ±15 dB) plus level, on sliders with the real response curve drawn behind them (`fx/GraphicEq.h` is shared by the pedal and the GUI)
+- [x] **Chorus** — modulated 8–16 ms delay mixed with dry; 1–3 voices, stereo width
+- [x] **Delay** — digital, tape (darker, saturating, wow and flutter) and ping-pong; free or synced to the host tempo; tails ring out when bypassed
+- [x] **Reverb** — 8-line FDN with room, hall and plate voicings; pre-delay, tone; tails ring out when bypassed; every mode and size at the same loudness
+- [x] **Spring reverb** — two springs (one per side): delay loops through 100 dispersive allpasses for the chirp, with dwell (drive), tone and decay
+- [x] **Tremolo** (sine/triangle/square, stereo spread up to auto-pan), **Vibrato**, **Flanger** (+-95% feedback), **Phaser** (4/8/12 stages, feedback)
+- [x] Tests: no clicks when rate/depth change, tempo sync accuracy, interpolation quality (no zipper or HF loss)
 
 **Done when:** Overdrive -> amp -> [EQ, Chorus, Delay, Reverb] -> cab sounds like a finished rig in a DAW, with tempo sync working.
 

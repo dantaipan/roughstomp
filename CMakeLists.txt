@@ -35,6 +35,7 @@ add_subdirectory(plugins/Rig)
 if(ROUGHSTOMP_BUILD_TOOLS)
     add_subdirectory(tools/render)
     add_subdirectory(tools/host-render)
+    add_subdirectory(tools/rig-snapshot)
 endif()
 
 # Test host, built into build/<preset>/host/

@@ -64,6 +64,44 @@ void PedalLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int wi
                   centre.getPointOnCircumference (r * 0.9f, angle) }, 3.0f);
 }
 
+int PedalLookAndFeel::getSliderThumbRadius (juce::Slider& slider)
+{
+    return slider.isVertical() ? 5 : LookAndFeel_V4::getSliderThumbRadius (slider);
+}
+
+void PedalLookAndFeel::drawLinearSlider (juce::Graphics& g, int x, int y, int width, int height,
+                                         float sliderPos, float minSliderPos, float maxSliderPos,
+                                         juce::Slider::SliderStyle style, juce::Slider& slider)
+{
+    if (style != juce::Slider::LinearVertical)
+    {
+        LookAndFeel_V4::drawLinearSlider (g, x, y, width, height, sliderPos, minSliderPos, maxSliderPos, style, slider);
+        return;
+    }
+
+    const auto bounds = juce::Rectangle<int> (x, y, width, height).toFloat();
+    const float cx = bounds.getCentreX();
+
+    // The slot the fader runs in
+    // (JUCE only fills in min/maxSliderPos for two- and three-value sliders,
+    // so the travel comes from the bounds and the thumb radius)
+    const float inset = static_cast<float> (getSliderThumbRadius (slider));
+    const auto slot = juce::Rectangle<float> (cx - 1.5f, bounds.getY() + inset - 3.0f, 3.0f, bounds.getHeight() - 2.0f * inset + 6.0f);
+    g.setColour (juce::Colours::black.withAlpha (0.6f));
+    g.fillRoundedRectangle (slot, 1.5f);
+
+    // The cap
+    const float capW = juce::jmin (bounds.getWidth() - 2.0f, 13.0f), capH = 9.0f;
+    const auto cap = juce::Rectangle<float> (capW, capH).withCentre ({ cx, sliderPos });
+    g.setColour (juce::Colours::black.withAlpha (0.35f));
+    g.fillRoundedRectangle (cap.translated (0.0f, 1.5f), 2.0f);
+    g.setGradientFill (juce::ColourGradient (colours.knob.brighter (0.5f), cap.getTopLeft(),
+                                             colours.knob, cap.getBottomLeft(), false));
+    g.fillRoundedRectangle (cap, 2.0f);
+    g.setColour (juce::Colours::white);
+    g.drawLine (cap.getX() + 2.0f, sliderPos, cap.getRight() - 2.0f, sliderPos, 1.5f);
+}
+
 //==============================================================================
 PedalKnob::PedalKnob (juce::AudioProcessorValueTreeState& apvts, const juce::ParameterID& id,
                       const juce::String& labelText, bool small)
@@ -90,7 +128,7 @@ void PedalKnob::paint (juce::Graphics& g)
         g.setColour (juce::Colours::white);
 
     g.setFont (pedalFont (isSmall ? 11.0f : 13.0f));
-    g.drawText (label, getLocalBounds().removeFromBottom (isSmall ? 14 : 16), juce::Justification::centred);
+    g.drawFittedText (label, getLocalBounds().removeFromBottom (isSmall ? 14 : 16), juce::Justification::centred, 1, 0.7f);
 }
 
 void PedalKnob::resized()

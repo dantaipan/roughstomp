@@ -23,16 +23,9 @@ juce::ParameterID slotKnobID (Section s, int i, int k)
     return { sectionKey (s) + juce::String (i + 1) + "_k" + juce::String (k + 1), 1 };
 }
 
-float toPlain (const fx::ParamInfo& p, float normalised) noexcept
-{
-    const float v = p.minValue + juce::jlimit (0.0f, 1.0f, normalised) * (p.maxValue - p.minValue);
-    return p.kind == fx::ParamInfo::Kind::continuous ? v : std::round (v);
-}
+float toPlain (const fx::ParamInfo& p, float normalised) noexcept { return p.fromNormalised (normalised); }
 
-float toNormalised (const fx::ParamInfo& p, float plain) noexcept
-{
-    return p.maxValue > p.minValue ? juce::jlimit (0.0f, 1.0f, (plain - p.minValue) / (p.maxValue - p.minValue)) : 0.0f;
-}
+float toNormalised (const fx::ParamInfo& p, float plain) noexcept { return p.toNormalised (plain); }
 
 juce::String valueText (const fx::ParamInfo& p, float plain)
 {
@@ -46,8 +39,17 @@ juce::String valueText (const fx::ParamInfo& p, float plain)
         return plain > 0.5f ? "On" : "Off";
 
     const auto unit = juce::String (std::string (p.unit));
+    if (unit == "Hz" && plain >= 1000.0f)
+        return juce::String (plain / 1000.0f, plain < 10000.0f ? 2 : 1) + " kHz";
+    if (unit == "Hz" && p.maxValue <= 20.0f)
+        return juce::String (plain, 2) + " Hz";   // LFO rates
+    if (unit == "s")
+        return juce::String (plain, plain < 1.0f ? 2 : 1) + " s";
+    if (unit == "dB")
+        return juce::String (plain, 1) + " dB";
+
     const int decimals = (p.maxValue - p.minValue) > 20.0f ? 0 : 1;
-    return juce::String (plain, unit == "dB" ? 1 : decimals) + (unit.isEmpty() ? "" : " " + unit);
+    return juce::String (plain, decimals) + (unit.isEmpty() ? "" : " " + unit);
 }
 } // namespace rig
 
@@ -502,6 +504,8 @@ void RigProcessor::pushParameters (Section s, std::span<fx::Pedal* const> pedals
         for (size_t k = 0; k < numKnobs; ++k)
             pedal->setParameter (static_cast<int> (k), rig::toPlain (params[k], sl.knobs[k]->load()));
         pedal->setBypassed (sl.on->load() < 0.5f);
+        pedal->setTempo (tempo);
+        pedal->setPlayPosition (quarterNotes, playing);
     }
 }
 
@@ -520,6 +524,21 @@ void RigProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuf
         buffer.applyGain (0, 0, n, 0.5f);
     }
 
+    // The host's tempo, for synced pedals (standalone has none: 120 BPM)
+    tempo = 120.0;
+    playing = false;
+    if (auto* playHead = getPlayHead())
+        if (const auto position = playHead->getPosition())
+        {
+            if (const auto bpm = position->getBpm(); bpm.hasValue() && *bpm > 0.0)
+                tempo = *bpm;
+            if (const auto ppq = position->getPpqPosition(); ppq.hasValue())
+            {
+                quarterNotes = *ppq;
+                playing = position->getIsPlaying();
+            }
+        }
+
     // Block-rate targets; the smoothers ramp to them
     inputGain.setTarget (dbToGain (inputDb->load()));
     ampGain.setTarget (dbToGain (ampGainDb->load()));
@@ -529,8 +548,11 @@ void RigProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuf
     outputGain.setTarget (dbToGain (outputDb->load()));
     mix.setTarget (loopOn->load() > 0.5f ? loopMix->load() / 100.0f : 0.0f);
 
+    const double blockStart = quarterNotes;
     for (int pos = 0; pos < n; pos += maxBlock)
     {
+        // Pedals read the play position at the start of each chunk
+        quarterNotes = blockStart + pos * tempo / (60.0 * currentSampleRate);
         float* ch[2] { buffer.getWritePointer (0, pos), numOut > 1 ? buffer.getWritePointer (1, pos) : nullptr };
         processChunk (ch, numOut, std::min (maxBlock, n - pos));
     }

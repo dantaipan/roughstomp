@@ -28,6 +28,18 @@ private:
         std::unique_ptr<juce::ParameterAttachment> attachment;
     };
 
+    /** A vertical slider (graphic EQ band or level), labelled underneath. */
+    struct Fader
+    {
+        std::unique_ptr<juce::Slider> slider;
+        std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> attachment;
+        juce::String label;
+        const fx::ParamInfo* info = nullptr;
+    };
+
+    bool isGraphicEq() const noexcept { return shown != nullptr && shown->style == fx::PedalInfo::Style::graphicEq; }
+    void paintEqCurve (juce::Graphics&);
+
     RigProcessor& rigProcessor;
     const rig::Section section;
     const int index;
@@ -39,6 +51,8 @@ private:
     juce::ComboBox typeBox;
     std::vector<std::unique_ptr<rs::ui::PedalKnob>> knobs;
     std::vector<Choice> choices;
+    std::vector<Fader> faders;
+    juce::Rectangle<int> labelRow;   // under the faders
     std::unique_ptr<rs::ui::Footswitch> footswitch;
     std::unique_ptr<rs::ui::Led> led;
 };

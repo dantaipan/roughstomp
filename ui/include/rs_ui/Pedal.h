@@ -31,6 +31,12 @@ public:
                            float sliderPos, float startAngle, float endAngle,
                            juce::Slider&) override;
 
+    /** Vertical sliders are drawn as small faders: a slot and a cap. */
+    void drawLinearSlider (juce::Graphics&, int x, int y, int width, int height,
+                           float sliderPos, float minSliderPos, float maxSliderPos,
+                           juce::Slider::SliderStyle, juce::Slider&) override;
+    int getSliderThumbRadius (juce::Slider&) override;
+
     const PedalColours colours;
 };
 
