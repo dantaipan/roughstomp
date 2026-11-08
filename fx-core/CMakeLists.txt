@@ -1,5 +1,8 @@
 add_library(fx-core STATIC
+    src/Chain.cpp
     src/Oversampler.cpp
+    src/Pedals.cpp
+    src/RateBridge.cpp
     src/effects/Gain.cpp
     src/effects/Overdrive.cpp
 )
@@ -8,8 +11,14 @@ add_library(fx::core ALIAS fx-core)
 target_include_directories(fx-core PUBLIC include)
 target_compile_features(fx-core PUBLIC cxx_std_20)
 
-# Linked into plugin shared libraries, so it must be position independent
-set_target_properties(fx-core PROPERTIES POSITION_INDEPENDENT_CODE ON)
+# Linked into plugin shared libraries, so it must be position independent.
+# Hidden symbols keep a plugin's copy of fx-core separate from any other copy
+# in the same process (e.g. RoughTrack linking fx-core and loading our plugin):
+# macOS otherwise merges their inline statics.
+set_target_properties(fx-core PROPERTIES
+    POSITION_INDEPENDENT_CODE ON
+    CXX_VISIBILITY_PRESET hidden
+    VISIBILITY_INLINES_HIDDEN ON)
 
 # Strict warnings for our own code only (PRIVATE, so consumers like RoughTrack
 # are unaffected). Roughly matches juce_recommended_warning_flags, which the
@@ -33,10 +42,13 @@ if(ROUGHSTOMP_BUILD_TESTS)
     FetchContent_MakeAvailable(Catch2)
 
     add_executable(fx-core-tests
+        tests/ChainTests.cpp
         tests/FilterTests.cpp
         tests/GainTests.cpp
         tests/OverdriveTests.cpp
         tests/OversamplerTests.cpp
+        tests/PedalTests.cpp
+        tests/RateBridgeTests.cpp
         tests/SmootherTests.cpp
         tests/WaveshaperTests.cpp
     )

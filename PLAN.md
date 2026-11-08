@@ -1,6 +1,14 @@
 # RoughStomp — Development Plan
 
-Guitar effects built with JUCE, developed in VS Code. Start with an overdrive, then grow into a pedalboard with an effects loop and modulation effects. The DSP lives in a shared library so the same code can ship as VST3/AU plugins **and** be linked directly into RoughTrack.
+A complete guitar rig built with JUCE, developed in VS Code: pedals before the amp, a NAM amp model, an effects loop before the power amp, and a cabinet IR, in one plugin (VST3/AU) and a standalone app. Load it in RoughTrack (or any DAW) the way you would AmpliTube. Single pedals, starting with the Overdrive, also ship as their own plugins. The DSP lives in a shared library, `fx-core`.
+
+```
+guitar -> [ pre-amp pedals ] -> AMP (NAM) -> [ FX loop pedals ] -> POWER AMP (optional NAM) -> CAB (IR) -> out
+           tuner, wah, drive                  EQ, chorus, delay,    empty by default: most
+                                              reverb                captures include the power amp
+```
+
+**About the loop position:** a real loop sits between preamp and power amp. Most NAM captures are a whole amp, so by default the loop runs after the amp model, before the cab (what modelling software usually does; modulation and ambience sound right there). For a true split, load a preamp-only capture as the amp and a power-amp capture in the power amp slot.
 
 ---
 
@@ -136,49 +144,61 @@ and high drive (fuller, warmer), Asym split 1–1 (very close). Soft now matches
 
 ---
 
-## Phase 4 — Pedalboard and effects loop
+## Phase 4 — The rig: pedals, amp, loop, cab
 
-**Goal:** chain multiple pedals and insert outside effects.
+**Goal:** play guitar through RoughStomp as a full rig, standalone and in a DAW.
 
-- [ ] Pedal registry/factory in `fx-core` (create effects by ID)
-- [ ] Pedalboard plugin: fixed number of slots (e.g. 6), each holding any pedal; reorderable by drag
-- [ ] Chain processing without allocation on the audio thread (build new chain on message thread, swap atomically)
-- [ ] Per-slot bypass, total latency = sum of slot latencies, reported to host
-- [ ] **Effects loop slot:** a send/return point in the chain
-  - Inside RoughTrack: route to a track/bus or host an external VST3/AU in the loop (`AudioPluginFormatManager`)
-  - As a plugin: host an external plugin inside the slot (optional — adds complexity)
-- [ ] Loop controls: send level, return level, dry/wet mix, loop on/off
-- [ ] Chain state and presets save/restore
-- [ ] RoughTrack integration: per-track insert chain using the same pedal registry
+- [x] Pedal registry/factory in `fx-core` (create effects by ID) — `fx::Pedal` describes its own controls (`PedalInfo`); `fx::registry` has Overdrive and Boost
+- [x] Chain processing without allocation on the audio thread (build new chain on message thread, swap atomically) — `fx::Chain`; pedals are shared between layouts so reordering never resets them; stress-tested under ThreadSanitizer
+- [x] RoughStomp rig plugin (VST3, AU, Standalone): mono guitar in, stereo out — pluginval strictness 10 passes
+- [x] Pre-amp section: 6 pedal slots, each holding any pedal, with per-slot bypass — slot knobs are fixed host parameters mapped onto whichever pedal is in the slot
+- [x] Amp: load a NAM capture (ported from RoughTrack, loudness-normalised), input gain, level, on/off
+- [x] Resample to the capture's rate (most are 48 kHz), so a 44.1 kHz session or device still works — fx::RateBridge, windowed sinc, fixed whole-sample latency (66 samples at 44.1 kHz). Cabinet IRs go through the same resampler: JUCE's own let through highs the cab should cut (up to 60 dB too much above 16 kHz)
+- [x] FX loop section: 6 pedal slots; send, return, mix and loop on/off — the dry path is delayed by the loop's latency, so blending never comb-filters
+- [x] Power amp slot: optional second NAM capture after the loop (one instance per stereo side)
+- [x] Cab: load an IR (WAV/AIFF), on/off; off when the capture already includes a cab
+- [x] Input and output level; total latency (pedals, plus amp resampling) reported to the host
+- [x] Session state saves pedals, settings and file paths — missing files are reported and their paths kept
+- [x] `rs-host-render`: renders a WAV through the built plugin, configured through its saved state
 
-**Done when:** you can build Overdrive → [loop: external reverb] → Chorus and save/recall it.
+**Done when:** standalone and in RoughTrack you can play Overdrive -> NAM amp -> loop -> cab, and it comes back the same after reopening.
 
 ---
 
-## Phase 5 — Modulation effects
+## Phase 5 — Loop effects
 
 Shared building blocks first:
 - [ ] `Lfo`: sine, triangle, square, random/S&H; rate in Hz or tempo-synced from host play head; stereo phase offset
 - [ ] `DelayLine`: circular buffer with fractional delay (linear, then cubic/Lagrange or allpass interpolation)
 
-Effects, in rough order of difficulty:
-- [ ] **Tremolo** — LFO on amplitude (warm-up, very quick)
-- [ ] **Vibrato** — modulated short delay, 100% wet
+Pedals (all stereo):
+- [ ] **EQ** — graphic or parametric, for shaping before the power amp
 - [ ] **Chorus** — modulated 10–30 ms delay mixed with dry; optional multi-voice
-- [ ] **Flanger** — modulated 1–10 ms delay with feedback
-- [ ] **Phaser** — 4–12 first-order allpass stages with modulated cutoff, plus feedback
+- [ ] **Delay** — digital, then tape/analog flavours and ping-pong; tempo sync
+- [ ] **Reverb** — FDN first (room/hall), then spring and plate
+- [ ] **Tremolo**, **Vibrato**, **Flanger**, **Phaser**
 - [ ] Tests: no clicks when rate/depth change, tempo sync accuracy, interpolation quality (no zipper or HF loss)
 
-**Done when:** all five run in the Pedalboard with tempo sync working in a DAW.
+**Done when:** Overdrive -> amp -> [EQ, Chorus, Delay, Reverb] -> cab sounds like a finished rig in a DAW, with tempo sync working.
 
 ---
 
-## Phase 6 — Later ideas
+## Phase 6 — Usability
 
-- [ ] Reverb (Freeverb or FDN first, then plate/spring)
-- [ ] Delay (tape/analog flavours, ping-pong)
-- [ ] Amp + cab sim, with the effects loop placed between preamp and power amp like a real amp
-- [ ] Noise gate and compressor (both pair well with drive)
+- [ ] Rig presets: save, recall and browse whole rigs (pedals, amp, cab, settings)
+- [ ] Drag pedals to reorder, and between the pre-amp and loop sections
+- [ ] Tuner (in the pre-amp section, mutes while tuning)
+- [ ] Noise gate at the input; compressor pedal
+- [ ] Wah (with host-automatable position for an expression pedal)
+- [ ] Polished rig GUI: pedalboard view, amp face, resizable window
+
+---
+
+## Phase 7 — Later ideas
+
+- [ ] More drives: fuzz, Big Muff-style, Klon-style
+- [ ] Stereo or dual-amp rigs
+- [ ] Optional (deferred): circuit-modelled stage (wave digital filters or nodal analysis) as a learning exercise
 - [ ] CLAP format
 
 ---

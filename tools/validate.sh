@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run pluginval against the built VST3 (and AU on macOS).
+# Run pluginval against every built plugin: VST3, and the installed AU on macOS.
 # Usage: tools/validate.sh [debug|release] [strictness]
 set -euo pipefail
 
@@ -12,7 +12,6 @@ case "$PRESET" in
 esac
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-ARTEFACTS="$ROOT/build/$PRESET/plugins/Overdrive/Overdrive_artefacts/$CONFIG"
 
 # Find pluginval: PATH first, then the usual macOS install location
 if command -v pluginval >/dev/null 2>&1; then
@@ -26,20 +25,28 @@ fi
 
 status=0
 
-VST3="$ARTEFACTS/VST3/RoughStomp Overdrive.vst3"
-if [ -d "$VST3" ]; then
-  echo "== Validating VST3 (strictness $STRICTNESS) =="
-  "$PLUGINVAL" --strictness-level "$STRICTNESS" --validate-in-process --validate "$VST3" || status=1
-else
-  echo "VST3 not found at: $VST3 (build first)"; status=1
-fi
+# Target name and product name of every plugin
+PLUGINS=("Overdrive:RoughStomp Overdrive" "Rig:RoughStomp")
 
-if [[ "$(uname)" == "Darwin" ]]; then
-  AU="$HOME/Library/Audio/Plug-Ins/Components/RoughStomp Overdrive.component"
-  if [ -d "$AU" ]; then
-    echo "== Validating AU (strictness $STRICTNESS) =="
-    "$PLUGINVAL" --strictness-level "$STRICTNESS" --validate-in-process --validate "$AU" || status=1
+for entry in "${PLUGINS[@]}"; do
+  TARGET="${entry%%:*}"; PRODUCT="${entry#*:}"
+  ARTEFACTS="$ROOT/build/$PRESET/plugins/$TARGET/${TARGET}_artefacts/$CONFIG"
+
+  VST3="$ARTEFACTS/VST3/$PRODUCT.vst3"
+  if [ -d "$VST3" ]; then
+    echo "== $PRODUCT: VST3 (strictness $STRICTNESS) =="
+    "$PLUGINVAL" --strictness-level "$STRICTNESS" --validate-in-process --validate "$VST3" || status=1
+  else
+    echo "VST3 not found at: $VST3 (build first)"; status=1
   fi
-fi
+
+  if [[ "$(uname)" == "Darwin" ]]; then
+    AU="$HOME/Library/Audio/Plug-Ins/Components/$PRODUCT.component"
+    if [ -d "$AU" ]; then
+      echo "== $PRODUCT: AU (strictness $STRICTNESS) =="
+      "$PLUGINVAL" --strictness-level "$STRICTNESS" --validate-in-process --validate "$AU" || status=1
+    fi
+  fi
+done
 
 exit $status

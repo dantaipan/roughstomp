@@ -23,13 +23,18 @@ add_subdirectory(external/JUCE)
 # Shared DSP library (no plugin code)
 add_subdirectory(fx-core)
 
+# Neural Amp Modeler, for the rig's amp
+include(cmake/NAM.cmake)
+
 # Shared pedal GUI (JUCE), then the plugins
 add_subdirectory(ui)
 add_subdirectory(plugins/Overdrive)
+add_subdirectory(plugins/Rig)
 
 # Offline tools
 if(ROUGHSTOMP_BUILD_TOOLS)
     add_subdirectory(tools/render)
+    add_subdirectory(tools/host-render)
 endif()
 
 # Test host, built into build/<preset>/host/
