@@ -204,7 +204,7 @@ Loose ends from earlier phases, done first:
 - [x] Amp, power amp and cab on/off crossfade (20 ms) against a latency-aligned dry signal instead of clicking
 - [x] Capture loading in the background: choosing an amp or loading a preset doesn't freeze the GUI (session restore stays synchronous, for offline bounces)
 - [x] Family look with RoughTrack: `ui/include/rs_ui/Family.h` mirrors RoughTrack's console look (palette, regular-weight type, buttons, menus, console knobs, fader caps); the rig's chrome (header, the Input / Amp / Power amp / Cab / Output row and the Loop box, all one box style) and tuner (now RoughTrack's strobe) use it; only the pedals keep a hardware look
-- [ ] Switch RoughTrack to use `rs_ui/Family.h` directly, so there's one copy of the family look (until then, keep it in step with RoughTrack's `ConsoleLookAndFeel`)
+- [x] RoughTrack uses `rs_ui/Family.h` directly (RoughStomp is public at github.com/dantaipan/roughstomp; RoughTrack fetches it at a pinned commit) — on RoughTrack's `family-look` branch, to merge
 
 - [x] More drives: Fuzz (vintage two-transistor style, with Bias for the gated sound), Big Fuzz (cascaded, sustaining, scooped tone), Clean Drive (transparent: clean side kept, treble) — shared 8x-oversampled `DrivePedal` base; levels fitted to sit with the Overdrive
 - [ ] Stereo or dual-amp rigs
