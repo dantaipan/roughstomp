@@ -36,6 +36,10 @@ commit and push here, then bump the pin in RoughTrack and check its
   picture
 - A deliberate change to a pedal's sound needs its regression references
   rewritten (`RS_UPDATE_REGRESSION=1 ... "[regression]"`) and reviewed
+- README screenshots live in `docs/images` and are made with
+  `rs-rig-snapshot --scale=2` (the tuner one with `--tone=HZ`); load captures
+  and IRs under neutral names (e.g. "Clean Amp", "Open-Back 2x12"), not the
+  commercial ones, and set pedal menus to sensible values
 - `tools/make_release.sh` makes the notarized download (the `dist` preset:
   universal, Developer ID); it uploads to Apple's notary service, so only run
   it when asked

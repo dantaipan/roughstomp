@@ -1,6 +1,12 @@
 # RoughStomp
 
-A guitar rig in JUCE, a companion to RoughTrack. See [PLAN.md](PLAN.md) for the roadmap.
+A guitar rig for macOS: pre-amp pedals, a [NAM](https://github.com/sdatkinson/NeuralAmpModelerCore) amp capture, an effects loop, an optional power amp and a cabinet IR. Use it as a standalone app with your audio interface, or as a VST3/AU plugin, for example as an insert in [RoughTrack](https://github.com/dantaipan/roughtrack), its companion DAW.
+
+**[Download RoughStomp for macOS](https://github.com/dantaipan/roughstomp/releases/latest)**: macOS 13 or later, Apple Silicon or Intel, signed and notarized. The disk image has the app and the plugins.
+
+![RoughStomp: the Input-to-Output row on top, then the pre-amp pedals and the effects loop](docs/images/rig.png)
+
+See [PLAN.md](PLAN.md) for the roadmap.
 
 Plugins (VST3, AU and a standalone app each):
 - **RoughStomp**: the full rig. Pre-amp pedals -> NAM amp capture -> FX loop -> optional power amp capture -> cabinet IR. Load it in RoughTrack or any DAW like AmpliTube (with RoughTrack's own amp off), or run the standalone app with your audio interface.
@@ -17,7 +23,6 @@ Plugins (VST3, AU and a standalone app each):
   - *Vibrato*, *Flanger*, *Phaser*
   - *Delay*: digital, tape or ping-pong
   - *Reverb*: room, hall or plate; *Spring*: two springs with dwell
-  
   - *Compressor*: sustain, attack, level, blend (parallel compression)
   - *Wah*: *Position* is the pedal (map an expression pedal or automation to it in your host), or *Auto* for an envelope filter
 
@@ -26,14 +31,16 @@ Plugins (VST3, AU and a standalone app each):
   Delay and the modulation pedals have a *Sync* menu that follows the host tempo (120 BPM standalone); while synced, their Time or Rate knob is ignored, and while the host plays, synced modulation lines up with the beat. Delay and the reverbs let their tails ring out when switched off.
 - **Presets:** the bar at the top. Arrows step through presets, the name opens the menu, *Save* saves (over your own preset, or as a new one). Factory presets set pedals and settings but keep your amp and cab; your own presets save everything, including the files. A `*` means you've changed something since loading. They're `.rsrig` files in `~/Library/Application Support/RoughStomp/Presets` (*Show Presets Folder* in the menu).
 - **Tuner:** the *Tuner* button: a strobe, as in RoughTrack (bands drift right when sharp, left when flat, stand still in tune). Mutes the output while it's on.
-- **Gate:** next to *Input*. Switch it on and turn *GATE* up until the hiss between notes goes.
+
+  ![The strobe tuner across the top row](docs/images/tuner.png)
+- **Gate:** next to *Input*. Switch it on and turn *Threshold* up until the hiss between notes goes.
 - **Window:** drag the corner to resize (70–150%); sessions remember the size.
 - **Look:** everything around the pedals matches RoughTrack (same colours, buttons, menus, knobs and strobe tuner, from `ui/include/rs_ui/Family.h`); only the pedals look like hardware, on purpose.
 - **Amp:** *Load...* a `.nam` capture. *Gain* drives the capture, *Level* sets what comes out (captures are levelled to the same loudness automatically).
 - **Power amp:** optional. Leave it empty for normal captures, which already include the power amp. For a true pre/power split, load a preamp-only capture as the amp and a power-amp capture here. It runs once per stereo side, so it costs twice the CPU of the amp.
 - **Cab:** *Load...* an IR (WAV/AIFF). Switch it off for "full rig" captures that already include a cab.
 - **Sample rate:** any rate works. A capture runs at the rate it was made at (usually 48 kHz); at any other rate it is resampled, which adds about 1.5 ms of latency (reported to the host, so it's compensated). Cabinet IRs are resampled to the session rate too.
-- Sessions remember everything, including the file paths. A missing file shows up in red and its path is kept.
+- Sessions remember everything, including the file paths. A missing file is flagged in amber and its path is kept.
 
 ## First-time setup (macOS)
 
