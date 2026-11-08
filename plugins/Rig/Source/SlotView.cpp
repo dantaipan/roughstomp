@@ -35,6 +35,8 @@ rs::ui::PedalColours SlotView::coloursFor (const fx::PedalInfo* info)
     else if (id == "flanger") paint (0xff2f7f9e, 0xff1f566b);
     else if (id == "phaser")  paint (0xffd0661f, 0xff97470f);
     else if (id == "spring")  paint (0xff6b4a2f, 0xff47301d);
+    else if (id == "compressor") paint (0xff4d6f74, 0xff30484c);
+    else if (id == "wah")     paint (0xff3a3a3a, 0xff1c1c1c);
     return c;
 }
 
@@ -169,9 +171,48 @@ void SlotView::rebuild()
     repaint();
 }
 
+void SlotView::mouseDrag (const juce::MouseEvent& e)
+{
+    if (shown == nullptr || e.getDistanceFromDragStart() < 6)
+        return;
+    if (auto* container = juce::DragAndDropContainer::findParentDragContainerFor (this); container != nullptr && ! container->isDragAndDropActive())
+    {
+        const juce::ScaledImage dragImage (createComponentSnapshot (getLocalBounds()).convertedToFormat (juce::Image::ARGB));
+        container->startDragging ("slot:" + rig::sectionKey (section) + ":" + juce::String (index), this, dragImage, true);
+    }
+}
+
+bool SlotView::isInterestedInDragSource (const SourceDetails& d)
+{
+    return d.description.toString().startsWith ("slot:") && d.sourceComponent.get() != this;
+}
+
+void SlotView::itemDragEnter (const SourceDetails&) { dropHighlight = true; repaint(); }
+void SlotView::itemDragExit (const SourceDetails&)  { dropHighlight = false; repaint(); }
+
+void SlotView::itemDropped (const SourceDetails& d)
+{
+    dropHighlight = false;
+    const auto parts = juce::StringArray::fromTokens (d.description.toString(), ":", {});
+    if (parts.size() == 3)
+    {
+        const auto fromSection = parts[1] == rig::sectionKey (rig::Section::pre) ? rig::Section::pre : rig::Section::loop;
+        rigProcessor.swapSlots (fromSection, parts[2].getIntValue(), section, index);
+    }
+    // Both slots rebuild on their next refresh; do this one now
+    refresh();
+    repaint();
+}
+
 void SlotView::paint (juce::Graphics& g)
 {
     auto body = getLocalBounds().toFloat().withTrimmedTop (static_cast<float> (typeBoxHeight + 4)).reduced (2.0f);
+
+    if (dropHighlight)
+    {
+        g.setColour (juce::Colours::white.withAlpha (0.08f));
+        g.fillRoundedRectangle (body.expanded (2.0f), 14.0f);
+    }
 
     if (shown == nullptr)
     {
@@ -179,7 +220,7 @@ void SlotView::paint (juce::Graphics& g)
         outline.addRoundedRectangle (body, 12.0f);
         const float dashes[] { 6.0f, 5.0f };
         juce::PathStrokeType (1.5f).createDashedStroke (outline, outline, dashes, 2);
-        g.setColour (juce::Colours::white.withAlpha (0.18f));
+        g.setColour (juce::Colours::white.withAlpha (dropHighlight ? 0.6f : 0.18f));
         g.fillPath (outline);
         g.setFont (rs::ui::pedalFont (12.0f, false));
         g.drawText ("empty", body, juce::Justification::centred);
@@ -188,8 +229,8 @@ void SlotView::paint (juce::Graphics& g)
 
     g.setGradientFill (juce::ColourGradient (colours.body, body.getTopLeft(), colours.bodyDark, body.getBottomRight(), false));
     g.fillRoundedRectangle (body, 12.0f);
-    g.setColour (juce::Colours::black.withAlpha (0.5f));
-    g.drawRoundedRectangle (body, 12.0f, 1.5f);
+    g.setColour (dropHighlight ? juce::Colours::white.withAlpha (0.8f) : juce::Colours::black.withAlpha (0.5f));
+    g.drawRoundedRectangle (body, 12.0f, dropHighlight ? 2.5f : 1.5f);
 
     if (! faders.empty())
         paintEqCurve (g);

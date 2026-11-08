@@ -18,6 +18,8 @@ juce_add_plugin(Rig
 target_sources(Rig PRIVATE
     Source/AmpModel.cpp
     Source/AmpModel.h
+    Source/Presets.cpp
+    Source/Presets.h
     Source/RigEditor.cpp
     Source/RigEditor.h
     Source/RigProcessor.cpp

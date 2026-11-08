@@ -6,11 +6,15 @@
 #include "AmpModel.h"
 #include "fx/Chain.h"
 #include "fx/Handoff.h"
+#include "fx/NoiseGate.h"
+#include "fx/PitchDetector.h"
 #include "fx/Smoother.h"
 
 #include <array>
 #include <atomic>
 #include <mutex>
+
+class PresetManager;
 
 namespace rig
 {
@@ -47,11 +51,14 @@ namespace ParamIDs
     inline const juce::ParameterID powerOn    { "powerOn",    1 };
     inline const juce::ParameterID cabOn      { "cabOn",      1 };
     inline const juce::ParameterID output     { "output",     1 };
+    inline const juce::ParameterID gateOn     { "gateOn",     1 };
+    inline const juce::ParameterID gateThreshold { "gateThreshold", 1 };
+    inline const juce::ParameterID tuner      { "tuner",      1 };
 }
 
 /** The whole rig:
 
-      in -> input -> [pre-amp pedals] -> AMP (NAM) -> to stereo
+      in -> input -> gate -> [pre-amp pedals] -> AMP (NAM) -> to stereo
          -> FX loop: send -> [loop pedals] -> return, blended with the
             latency-aligned dry signal by mix
          -> POWER AMP (optional NAM, one per channel) -> CAB (IR) -> output
@@ -92,11 +99,34 @@ public:
     void getStateInformation (juce::MemoryBlock&) override;
     void setStateInformation (const void* data, int sizeInBytes) override;
 
+    // Whole-rig state (message thread) ------------------------------------------
+
+    /** Everything: parameters, pedals, file paths, preset name. */
+    std::unique_ptr<juce::XmlElement> captureState();
+
+    /** keepCurrent leaves the amp, power amp and cab as they are (factory
+        presets don't know which captures you have). */
+    enum class Files { restore, keepCurrent };
+    void restoreState (const juce::XmlElement&, Files);
+
+    /** The preset the rig came from ("" if none), and whether it had been
+        changed when the state was saved. Kept with sessions. */
+    void setPresetName (const juce::String&, bool modified);
+    juce::String getPresetName() const;
+    bool wasPresetModified() const;
+
+    PresetManager& getPresets() noexcept { return *presets; }
+
     // Message thread ----------------------------------------------------------
 
     /** Puts a pedal in a slot ("" empties it). With resetKnobs, the slot's
         knobs jump to the pedal's defaults. */
     void setSlotPedal (rig::Section, int slot, juce::StringRef pedalId, bool resetKnobs = true);
+
+    /** Swaps two slots, pedals and settings (into an empty slot: a move).
+        Within a section the pedals themselves move, tails and all; between
+        sections fresh ones are made (the chains run different channel counts). */
+    void swapSlots (rig::Section, int slot, rig::Section, int otherSlot);
 
     /** Any thread. nullptr for an empty slot. */
     const fx::PedalInfo* getSlotInfo (rig::Section, int slot) const noexcept;
@@ -108,6 +138,16 @@ public:
 
     /** A problem worth showing (e.g. the file is missing), or empty. */
     juce::String getAmpProblem (rig::AmpStage) const;
+
+    /** The tuner's latest reading. Call a few times a second while the tuner
+        is on (the output is muted then); it reads what the audio thread has
+        captured since the last call. */
+    struct TunerReading
+    {
+        float hz = 0.0f;           // 0: no clear note
+        float confidence = 0.0f;
+    };
+    TunerReading readTuner();
 
     juce::String loadCabinet (const juce::File&);
     void clearCabinet();
@@ -191,6 +231,25 @@ private:
     std::atomic<float>* powerOn = nullptr;
     std::atomic<float>* cabOn = nullptr;
     std::atomic<float>* outputDb = nullptr;
+    std::atomic<float>* gateOn = nullptr;
+    std::atomic<float>* gateThresholdDb = nullptr;
+    std::atomic<float>* tunerOn = nullptr;
+
+    fx::NoiseGate gate;
+
+    juce::String presetName;       // messageLock
+    bool presetModified = false;   // messageLock
+    std::unique_ptr<PresetManager> presets;
+    int ticks = 0;
+
+    // Tuner: the audio thread copies the raw input here while tuning; the
+    // message thread reads it into a window and finds the pitch
+    static constexpr int tunerFifoSize = 32768;
+    juce::AbstractFifo tunerFifo { tunerFifoSize };
+    std::vector<float> tunerFifoData = std::vector<float> (static_cast<size_t> (tunerFifoSize));
+    std::vector<float> tunerWindow;
+    fx::PitchDetector pitchDetector;
+    double pitchDetectorRate = 0.0;
 
     fx::LinearSmoother inputGain { 1.0f }, ampGain { 1.0f }, ampLevel { 1.0f },
                        sendGain { 1.0f }, returnGain { 1.0f }, mix { 1.0f }, outputGain { 1.0f };

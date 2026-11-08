@@ -5,7 +5,8 @@
 
 /** One pedal slot: a menu to pick the pedal, its knobs and switches, and a
     footswitch. Rebuilds itself whenever the slot's pedal changes. */
-class SlotView final : public juce::Component
+class SlotView final : public juce::Component,
+                       public juce::DragAndDropTarget
 {
 public:
     SlotView (RigProcessor&, rig::Section, int slot);
@@ -18,6 +19,13 @@ public:
     void resized() override;
 
     static rs::ui::PedalColours coloursFor (const fx::PedalInfo*);
+
+    // Drag a pedal by its body onto another slot to swap them
+    void mouseDrag (const juce::MouseEvent&) override;
+    bool isInterestedInDragSource (const SourceDetails&) override;
+    void itemDragEnter (const SourceDetails&) override;
+    void itemDragExit (const SourceDetails&) override;
+    void itemDropped (const SourceDetails&) override;
 
 private:
     void rebuild();
@@ -47,6 +55,8 @@ private:
     const fx::PedalInfo* shown = nullptr;
     bool built = false;
     rs::ui::PedalColours colours;
+
+    bool dropHighlight = false;
 
     juce::ComboBox typeBox;
     std::vector<std::unique_ptr<rs::ui::PedalKnob>> knobs;

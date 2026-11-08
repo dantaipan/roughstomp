@@ -188,12 +188,12 @@ Pedals (all stereo):
 
 ## Phase 6 — Usability
 
-- [ ] Rig presets: save, recall and browse whole rigs (pedals, amp, cab, settings)
-- [ ] Drag pedals to reorder, and between the pre-amp and loop sections
-- [ ] Tuner (in the pre-amp section, mutes while tuning)
-- [ ] Noise gate at the input; compressor pedal
-- [ ] Wah (with host-automatable position for an expression pedal)
-- [ ] Polished rig GUI: pedalboard view, amp face, resizable window
+- [x] Rig presets: save, recall and browse whole rigs (pedals, amp, cab, settings) — user presets are `.rsrig` files in `~/Library/Application Support/RoughStomp/Presets`; seven factory presets keep your amp and cab; "*" marks changes since loading
+- [x] Drag pedals to reorder, and between the pre-amp and loop sections — drop on a slot to swap (or move into an empty one); settings travel with the pedal
+- [x] Tuner (mutes while tuning) — YIN pitch detection within 0.5 cent from low E to C6; header button, display over the amp row
+- [x] Noise gate at the input (hysteresis, hold, click-free fades); compressor pedal (sustain, attack, level, blend)
+- [x] Wah (with host-automatable position for an expression pedal) — pedal or auto (envelope) mode
+- [x] Polished rig GUI: pedalboard rails, amp face (tolex, piping, name plate), cab grille, resizable window (70–150%, remembered)
 
 ---
 

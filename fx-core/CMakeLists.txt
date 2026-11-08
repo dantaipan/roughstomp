@@ -2,13 +2,16 @@ add_library(fx-core STATIC
     src/Chain.cpp
     src/Oversampler.cpp
     src/Pedals.cpp
+    src/PitchDetector.cpp
     src/RateBridge.cpp
     src/pedals/Chorus.cpp
     src/pedals/Delay.cpp
+    src/pedals/Dynamics.cpp
     src/pedals/Eq.cpp
     src/pedals/Modulation.cpp
     src/pedals/Reverb.cpp
     src/pedals/Spring.cpp
+    src/pedals/Wah.cpp
     src/effects/Gain.cpp
     src/effects/Overdrive.cpp
 )
@@ -56,11 +59,13 @@ if(ROUGHSTOMP_BUILD_TESTS)
         tests/OverdriveTests.cpp
         tests/OversamplerTests.cpp
         tests/PedalTests.cpp
+        tests/Phase6Tests.cpp
         tests/RateBridgeTests.cpp
         tests/SmootherTests.cpp
         tests/WaveshaperTests.cpp
     )
     target_link_libraries(fx-core-tests PRIVATE fx::core fx-warnings Catch2::Catch2WithMain)
+    target_include_directories(fx-core-tests PRIVATE src)   # tests may use pedals' own helpers
 
     list(APPEND CMAKE_MODULE_PATH ${catch2_SOURCE_DIR}/extras)
     include(Catch)

@@ -17,7 +17,16 @@ Plugins (VST3, AU and a standalone app each):
   - *Delay*: digital, tape or ping-pong
   - *Reverb*: room, hall or plate; *Spring*: two springs with dwell
   
+  - *Compressor*: sustain, attack, level, blend (parallel compression)
+  - *Wah*: *Position* is the pedal (map an expression pedal or automation to it in your host), or *Auto* for an envelope filter
+
+  Drag a pedal by its body onto another slot to swap them, in either row; settings travel with it.
+
   Delay and the modulation pedals have a *Sync* menu that follows the host tempo (120 BPM standalone); while synced, their Time or Rate knob is ignored, and while the host plays, synced modulation lines up with the beat. Delay and the reverbs let their tails ring out when switched off.
+- **Presets:** the bar at the top. Arrows step through presets, the name opens the menu, *Save* saves (over your own preset, or as a new one). Factory presets set pedals and settings but keep your amp and cab; your own presets save everything, including the files. A `*` means you've changed something since loading. They're `.rsrig` files in `~/Library/Application Support/RoughStomp/Presets` (*Show Presets Folder* in the menu).
+- **Tuner:** the *TUNER* button. Mutes the output while it's on.
+- **Gate:** next to *Input*. Switch it on and turn *GATE* up until the hiss between notes goes.
+- **Window:** drag the corner to resize (70–150%); sessions remember the size.
 - **Amp:** *Load...* a `.nam` capture. *Gain* drives the capture, *Level* sets what comes out (captures are levelled to the same loudness automatically).
 - **Power amp:** optional. Leave it empty for normal captures, which already include the power amp. For a true pre/power split, load a preamp-only capture as the amp and a power-amp capture here. It runs once per stereo side, so it costs twice the CPU of the amp.
 - **Cab:** *Load...* an IR (WAV/AIFF). Switch it off for "full rig" captures that already include a cab.
@@ -94,7 +103,7 @@ $H $P di.wav out.wav Rig.loop1=overdrive loopMix=50 pre1_on=0 input=3
 `id=value` sets a parameter in its own units; `Rig.key=value` sets a rig
 attribute (`ampFile`, `powerFile`, `cabFile`, `pre1`..`pre6`, `loop1`..`loop6`
 with pedal ids like `overdrive`, `boost`, `eq`, `chorus`, `delay`, `reverb`,
-`tremolo`, `vibrato`, `flanger`, `phaser`, `spring`).
+`tremolo`, `vibrato`, `flanger`, `phaser`, `spring`, `compressor`, `wah`).
 Slot knobs are `pre1_k1`.. and run 0..1 across the pedal's range (log for
 frequencies and times). A pedal set this way keeps the knobs' values rather
 than its own defaults, so set every knob you care about. Prints latency, peak and RMS.
@@ -105,6 +114,11 @@ kind of settings, for checking the GUI without a DAW:
 ```bash
 build/release/tools/rig-snapshot/rs-rig-snapshot_artefacts/Release/rs-rig-snapshot editor.png Rig.loop1=delay --scale=2
 ```
+
+It can also load or save presets (`--preset=Lead`, `--save-preset=Name`),
+swap slots (`--swap=pre1,loop3`), set state attributes (`State.uiScale=0.8`)
+and check the tuner (`--tone=82.4` plays that pitch through the rig and prints
+what the tuner reads).
 
 The build copies the plugin to `~/Library/Audio/Plug-Ins/VST3` and `.../Components` automatically, so DAWs see it after a rescan.
 

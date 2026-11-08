@@ -1,7 +1,7 @@
 #pragma once
 
-// Pedals for the FX loop (all stereo). Private to fx-core: hosts reach them
-// through fx::registry.
+// fx-core's pedals beyond the Overdrive and Boost (all handle stereo).
+// Private to fx-core: hosts reach them through fx::registry.
 
 #include "fx/DelayLine.h"
 #include "fx/Filters.h"
@@ -11,6 +11,7 @@
 #include "fx/Smoother.h"
 
 #include <array>
+#include <cmath>
 #include <vector>
 
 namespace fx
@@ -311,6 +312,65 @@ private:
     std::array<Spring, 2> springs;
     OnePole inputLowCut;
     LinearSmoother send { 1.0f }, wetGain { 0.3f }, drive { 1.0f };
+};
+
+/** Compressor: Sustain sets how hard it squeezes (threshold and ratio
+    together), with automatic make-up gain; Blend mixes the dry signal back
+    in (parallel compression). The sides share one gain, so the image holds. */
+class CompressorPedal final : public BasicPedal
+{
+public:
+    enum Index { sustain, attack, level, blend };
+    static const PedalInfo& staticInfo();
+
+    CompressorPedal() : BasicPedal (staticInfo()) {}
+
+    /** The gain computer: dB of gain (<= 0) for an input level in dB. */
+    static float gainDb (float inputDb, float thresholdDb, float ratio) noexcept;
+    static float thresholdFor (float sustainValue) noexcept { return -12.0f - 3.0f * sustainValue; }
+    static float ratioFor (float sustainValue) noexcept     { return 2.0f + 0.6f * sustainValue; }
+    static float makeupFor (float sustainValue) noexcept;
+
+    void prepare (double sampleRate, int maxBlockSize, int numChannels) override;
+    void reset() override;
+    void process (float* const* channels, int numChannels, int numSamples) override;
+
+private:
+    double sampleRate = 48000.0;
+    bool primed = false;
+    float peak = 0.0f, peakRelease = 0.0f;   // level detector
+    float reductionDb = 0.0f;                // smoothed gain reduction
+    LinearSmoother levelGain { 1.0f }, wet { 1.0f }, makeup { 1.0f };
+};
+
+/** Wah: a resonant bandpass swept 350 Hz - 2.2 kHz by Position, which is a
+    host parameter, so an expression pedal or automation can rock it. Auto
+    mode follows the playing dynamics instead (an envelope filter), starting
+    from Position. */
+class WahPedal final : public BasicPedal
+{
+public:
+    enum Index { position, resonance, level, sensitivity, mode };
+    enum class Mode { manual, autoWah };
+    static const PedalInfo& staticInfo();
+
+    static constexpr double lowestHz = 350.0, highestHz = 2200.0;
+    static double frequencyFor (double position01) noexcept { return lowestHz * std::pow (highestHz / lowestHz, position01); }
+
+    WahPedal() : BasicPedal (staticInfo()) {}
+
+    void prepare (double sampleRate, int maxBlockSize, int numChannels) override;
+    void reset() override;
+    void process (float* const* channels, int numChannels, int numSamples) override;
+
+private:
+    double sampleRate = 48000.0;
+    bool primed = false;
+    OnePoleSmoother sweep { 0.5f };   // 0..1, smoothed so stepped automation doesn't zipper
+    float envelope = 0.0f, envAttack = 0.0f, envRelease = 0.0f;
+    LinearSmoother levelGain { 1.0f }, wet { 1.0f };
+    struct State { float ic1 = 0.0f, ic2 = 0.0f; };
+    std::vector<State> states;   // per channel
 };
 
 } // namespace fx

@@ -1,6 +1,7 @@
 #include "RigProcessor.h"
 
 #include "RigEditor.h"
+#include "Presets.h"
 
 #include <juce_audio_formats/juce_audio_formats.h>
 
@@ -108,6 +109,9 @@ RigProcessor::RigProcessor()
     powerOn      = raw (ParamIDs::powerOn);
     cabOn        = raw (ParamIDs::cabOn);
     outputDb     = raw (ParamIDs::output);
+    gateOn       = raw (ParamIDs::gateOn);
+    gateThresholdDb = raw (ParamIDs::gateThreshold);
+    tunerOn      = raw (ParamIDs::tuner);
 
     for (auto s : { Section::pre, Section::loop })
         for (int i = 0; i < rig::slotsPerSection; ++i)
@@ -124,6 +128,7 @@ RigProcessor::RigProcessor()
     // A new rig starts with an overdrive in front of the amp
     setSlotPedal (Section::pre, 0, "overdrive");
 
+    presets = std::make_unique<PresetManager> (*this);
     startTimerHz (20);
 }
 
@@ -158,6 +163,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout RigProcessor::createLayout()
     layout.add (std::make_unique<AudioParameterBool> (ParamIDs::powerOn, "Power Amp On", true));
     layout.add (std::make_unique<AudioParameterBool> (ParamIDs::cabOn, "Cab On", true));
     addDb (ParamIDs::output, "Output", -24.0f, 12.0f, 0.0f);
+    layout.add (std::make_unique<AudioParameterBool> (ParamIDs::gateOn, "Gate On", false));
+    addDb (ParamIDs::gateThreshold, "Gate Threshold", -90.0f, -20.0f, -60.0f);
+    layout.add (std::make_unique<AudioParameterBool> (ParamIDs::tuner, "Tuner", false,
+                                                      AudioParameterBoolAttributes().withAutomatable (false)));
 
     // Slot controls: generic, because any pedal can sit in any slot. Their
     // text shows whatever the current pedal's knob means.
@@ -223,6 +232,58 @@ void RigProcessor::setSlotPedal (Section s, int i, juce::StringRef pedalId, bool
         publishLayout (s);
     }
     updateLatency();
+}
+
+void RigProcessor::swapSlots (Section sa, int a, Section sb, int b)
+{
+    if (a < 0 || b < 0 || a >= rig::slotsPerSection || b >= rig::slotsPerSection || (sa == sb && a == b))
+        return;
+
+    // Settings first: each slot's controls take the other's values
+    struct Settings
+    {
+        std::array<float, rig::knobsPerSlot> knobs {};
+        float on = 1.0f;
+        juce::String id;
+    };
+    auto read = [this] (Section s, int i)
+    {
+        Settings st;
+        for (int k = 0; k < rig::knobsPerSlot; ++k)
+            st.knobs[static_cast<size_t> (k)] = apvts.getParameter (rig::slotKnobID (s, i, k).getParamID())->getValue();
+        st.on = apvts.getParameter (rig::slotOnID (s, i).getParamID())->getValue();
+        if (const auto* info = getSlotInfo (s, i))
+            st.id = juce::String (std::string (info->id));
+        return st;
+    };
+    auto write = [this] (Section s, int i, const Settings& st)
+    {
+        for (int k = 0; k < rig::knobsPerSlot; ++k)
+            apvts.getParameter (rig::slotKnobID (s, i, k).getParamID())->setValueNotifyingHost (st.knobs[static_cast<size_t> (k)]);
+        apvts.getParameter (rig::slotOnID (s, i).getParamID())->setValueNotifyingHost (st.on);
+    };
+    const auto first = read (sa, a), second = read (sb, b);
+    write (sa, a, second);
+    write (sb, b, first);
+
+    if (sa == sb)
+    {
+        {
+            const std::scoped_lock lock (messageLock);
+            auto& x = slot (sa, a);
+            auto& y = slot (sb, b);
+            std::swap (x.pedal, y.pedal);
+            x.info = x.pedal != nullptr ? &x.pedal->info() : nullptr;
+            y.info = y.pedal != nullptr ? &y.pedal->info() : nullptr;
+            publishLayout (sa);
+        }
+        updateLatency();
+    }
+    else
+    {
+        setSlotPedal (sa, a, second.id, false);
+        setSlotPedal (sb, b, first.id, false);
+    }
 }
 
 void RigProcessor::publishLayout (Section s)
@@ -415,8 +476,53 @@ juce::File RigProcessor::getCabinetFile() const
     return cabinetFile;
 }
 
+RigProcessor::TunerReading RigProcessor::readTuner()
+{
+    double rate;
+    {
+        const std::scoped_lock lock (messageLock);
+        rate = currentSampleRate;
+    }
+
+    // About 85 ms of audio: two periods of the lowest string, with room
+    if (! juce::approximatelyEqual (rate, pitchDetectorRate))
+    {
+        const int window = juce::nextPowerOfTwo (static_cast<int> (rate * 0.085));
+        pitchDetector.prepare (rate, window);
+        tunerWindow.assign (static_cast<size_t> (window), 0.0f);
+        pitchDetectorRate = rate;
+    }
+
+    // Slide what's arrived into the window
+    const int ready = tunerFifo.getNumReady();
+    if (ready == 0)
+        return {};
+    const auto scope = tunerFifo.read (ready);
+    auto append = [this] (int start, int count)
+    {
+        if (count <= 0)
+            return;
+        const auto size = static_cast<int> (tunerWindow.size());
+        const int keep = std::max (0, size - count);
+        std::copy (tunerWindow.end() - keep, tunerWindow.end(), tunerWindow.begin());
+        const int take = std::min (count, size);
+        const auto* src = tunerFifoData.data() + start + (count - take);
+        std::copy (src, src + take, tunerWindow.begin() + keep);
+    };
+    append (scope.startIndex1, scope.blockSize1);
+    append (scope.startIndex2, scope.blockSize2);
+
+    const auto r = pitchDetector.detect (tunerWindow.data());
+    return { r.hz, r.confidence };
+}
+
 void RigProcessor::timerCallback()
 {
+    // Once a second: note whether the rig has drifted from its preset, so a
+    // saved session remembers it (getStateInformation may run on any thread)
+    if (++ticks % 20 == 0 && presets != nullptr)
+        presets->noteModifiedState();
+
     {
         const std::scoped_lock lock (messageLock);
         preChain.collectGarbage();
@@ -472,12 +578,15 @@ void RigProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
         g->prepare (sampleRate, 0.02);
     mix.prepare (sampleRate, 0.02);
 
+    gate.prepare (sampleRate);
+    tunerFifo.reset();
+
     inputGain.reset (dbToGain (inputDb->load()));
     ampGain.reset (dbToGain (ampGainDb->load()));
     ampLevel.reset (dbToGain (ampLevelDb->load()));
     sendGain.reset (dbToGain (loopSendDb->load()));
     returnGain.reset (dbToGain (loopReturnDb->load()));
-    outputGain.reset (dbToGain (outputDb->load()));
+    outputGain.reset (tunerOn->load() > 0.5f ? 0.0f : dbToGain (outputDb->load()));
     mix.reset (loopOn->load() > 0.5f ? loopMix->load() / 100.0f : 0.0f);
 
     for (auto& d : dryDelay)
@@ -524,6 +633,21 @@ void RigProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuf
         buffer.applyGain (0, 0, n, 0.5f);
     }
 
+    // The tuner listens to the raw input; while it's on, the output is muted
+    const bool tuning = tunerOn->load() > 0.5f;
+    if (tuning)
+    {
+        const auto scope = tunerFifo.write (std::min (n, tunerFifo.getFreeSpace()));
+        const float* in = buffer.getReadPointer (0);
+        if (scope.blockSize1 > 0)
+            std::copy (in, in + scope.blockSize1, tunerFifoData.begin() + scope.startIndex1);
+        if (scope.blockSize2 > 0)
+            std::copy (in + scope.blockSize1, in + scope.blockSize1 + scope.blockSize2, tunerFifoData.begin() + scope.startIndex2);
+    }
+
+    gate.setEnabled (gateOn->load() > 0.5f);
+    gate.setThresholdDb (gateThresholdDb->load());
+
     // The host's tempo, for synced pedals (standalone has none: 120 BPM)
     tempo = 120.0;
     playing = false;
@@ -545,7 +669,7 @@ void RigProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuf
     ampLevel.setTarget (dbToGain (ampLevelDb->load()));
     sendGain.setTarget (dbToGain (loopSendDb->load()));
     returnGain.setTarget (dbToGain (loopReturnDb->load()));
-    outputGain.setTarget (dbToGain (outputDb->load()));
+    outputGain.setTarget (tuning ? 0.0f : dbToGain (outputDb->load()));
     mix.setTarget (loopOn->load() > 0.5f ? loopMix->load() / 100.0f : 0.0f);
 
     const double blockStart = quarterNotes;
@@ -562,8 +686,9 @@ void RigProcessor::processChunk (float* const* ch, int numOut, int n) noexcept
 {
     float* mono = ch[0];
 
-    // Input and pre-amp pedals (mono)
+    // Input, gate and pre-amp pedals (mono)
     applyGain (inputGain, &mono, 1, n);
+    gate.process (mono, n);
     pushParameters (Section::pre, preChain.beginBlock());
     preChain.process (&mono, 1, n);
 
@@ -643,7 +768,7 @@ void RigProcessor::processChunk (float* const* ch, int numOut, int n) noexcept
 }
 
 //==============================================================================
-void RigProcessor::getStateInformation (juce::MemoryBlock& destData)
+std::unique_ptr<juce::XmlElement> RigProcessor::captureState()
 {
     auto state = apvts.copyState();
     juce::ValueTree rigTree ("Rig");
@@ -660,28 +785,50 @@ void RigProcessor::getStateInformation (juce::MemoryBlock& destData)
     rigTree.setProperty ("powerFile", getAmpFile (AmpStage::power).getFullPathName(), nullptr);
     rigTree.setProperty ("cabFile",   getCabinetFile().getFullPathName(), nullptr);
 
+    {
+        const std::scoped_lock lock (messageLock);
+        rigTree.setProperty ("preset", presetName, nullptr);
+        rigTree.setProperty ("presetModified", presetModified, nullptr);
+    }
+
     state.removeChild (state.getChildWithName ("Rig"), nullptr);
     state.appendChild (rigTree, nullptr);
-
-    if (auto xml = state.createXml())
-        copyXmlToBinary (*xml, destData);
+    return state.createXml();
 }
 
-void RigProcessor::setStateInformation (const void* data, int sizeInBytes)
+void RigProcessor::restoreState (const juce::XmlElement& xml, Files files)
 {
-    auto xml = getXmlFromBinary (data, sizeInBytes);
-    if (xml == nullptr || ! xml->hasTagName (apvts.state.getType()))
+    if (! xml.hasTagName (apvts.state.getType()))
         return;
 
-    auto state = juce::ValueTree::fromXml (*xml);
+    auto state = juce::ValueTree::fromXml (xml);
     const auto rigTree = state.getChildWithName ("Rig").createCopy();
     state.removeChild (state.getChildWithName ("Rig"), nullptr);
+
+    // Parameters missing from older states keep their defaults rather than
+    // whatever was set before
+    for (auto* p : getParameters())
+        if (auto* withId = dynamic_cast<juce::AudioProcessorParameterWithID*> (p))
+            if (! state.getChildWithProperty ("id", withId->paramID).isValid())
+                withId->setValueNotifyingHost (withId->getDefaultValue());
     apvts.replaceState (state);
+
+    // Never come back muted in the tuner
+    apvts.getParameter (ParamIDs::tuner.getParamID())->setValueNotifyingHost (0.0f);
 
     // Knob values came with the parameters, so don't reset them
     for (auto s : { Section::pre, Section::loop })
         for (int i = 0; i < rig::slotsPerSection; ++i)
             setSlotPedal (s, i, rigTree.getProperty (rig::sectionKey (s) + juce::String (i + 1)).toString(), false);
+
+    {
+        const std::scoped_lock lock (messageLock);
+        presetName = rigTree.getProperty ("preset").toString();
+        presetModified = static_cast<bool> (rigTree.getProperty ("presetModified", false));
+    }
+
+    if (files == Files::keepCurrent)
+        return;
 
     auto restore = [&] (AmpStage stage, const juce::String& path)
     {
@@ -706,6 +853,41 @@ void RigProcessor::setStateInformation (const void* data, int sizeInBytes)
         loadCabinet (juce::File (cab));
     else
         clearCabinet();
+}
+
+void RigProcessor::setPresetName (const juce::String& name, bool modified)
+{
+    const std::scoped_lock lock (messageLock);
+    presetName = name;
+    presetModified = modified;
+}
+
+juce::String RigProcessor::getPresetName() const
+{
+    const std::scoped_lock lock (messageLock);
+    return presetName;
+}
+
+bool RigProcessor::wasPresetModified() const
+{
+    const std::scoped_lock lock (messageLock);
+    return presetModified;
+}
+
+void RigProcessor::getStateInformation (juce::MemoryBlock& destData)
+{
+    if (auto xml = captureState())
+        copyXmlToBinary (*xml, destData);
+}
+
+void RigProcessor::setStateInformation (const void* data, int sizeInBytes)
+{
+    if (auto xml = getXmlFromBinary (data, sizeInBytes))
+    {
+        restoreState (*xml, Files::restore);
+        if (presets != nullptr)
+            presets->stateRestored();
+    }
 }
 
 juce::AudioProcessorEditor* RigProcessor::createEditor()
