@@ -8,6 +8,9 @@
 # credentials saved under a keychain profile (the same Apple account as
 # RoughTrack's works):
 #   xcrun notarytool store-credentials roughtrack-notary --apple-id ... --team-id ...
+#
+# Also needs TONE3000's publishable key in tone3000/client_id.local (git
+# ignores it), or the download would ship without TONE3000.
 
 set -euo pipefail
 
@@ -19,6 +22,11 @@ fi
 identity="Developer ID Application"
 
 cd "$(dirname "$0")/.."
+
+if [ ! -s tone3000/client_id.local ]; then
+    echo "No TONE3000 client ID: put the publishable key (t3k_pub_...) in tone3000/client_id.local" >&2
+    exit 1
+fi
 
 cmake --preset dist
 cmake --build --preset dist --target Rig_Standalone Rig_VST3 Rig_AU
@@ -43,6 +51,10 @@ for bundle in "$app" "$vst3" "$au"; do
     weak=$(nm -gUm "$binary" | grep -c "weak external" || true)
     if [ "$weak" != "0" ]; then
         echo "$bundle exports $weak weak symbols: it would clash with RoughTrack's NAM" >&2
+        exit 1
+    fi
+    if ! strings "$binary" | grep -q "t3k_pub_"; then
+        echo "$bundle was built without the TONE3000 client ID" >&2
         exit 1
     fi
 done

@@ -15,6 +15,7 @@
 // well above 1).
 
 #include "Presets.h"
+#include "RigEditor.h"
 #include "RigProcessor.h"
 
 #include <iostream>
@@ -41,6 +42,8 @@ int main (int argc, char* argv[])
     float scale = 1.0f;
     double toneHz = 0.0, rate = 48000.0;
     juce::String toggleParam, asyncAmp;
+    int waitMs = 0;
+    juce::String tone3000Open;   // --tone3000=amp|power|cab[:toneId]: open TONE3000's browser   // --wait=SECONDS: pump messages (background loads, TONE3000 downloads) before the picture
     juce::StringArray presetActions;   // "load:NAME" / "save:NAME", in order
     for (int i = 2; i < argc; ++i)
     {
@@ -58,6 +61,16 @@ int main (int argc, char* argv[])
         if (a.startsWith ("--swap="))
         {
             presetActions.add ("swap:" + a.fromFirstOccurrenceOf ("=", false, false));
+            continue;
+        }
+        if (a.startsWith ("--tone3000="))
+        {
+            tone3000Open = a.fromFirstOccurrenceOf ("=", false, false);
+            continue;
+        }
+        if (a.startsWith ("--wait="))
+        {
+            waitMs = juce::roundToInt (a.fromFirstOccurrenceOf ("=", false, false).getDoubleValue() * 1000.0);
             continue;
         }
         if (a.startsWith ("--async-amp="))
@@ -264,6 +277,27 @@ int main (int argc, char* argv[])
             juce::MessageManager::getInstance()->runDispatchLoopUntil (11);   // about real time
         }
         std::cout << "output peak while tuning: " << juce::Decibels::gainToDecibels (outPeak) << " dB\n";
+    }
+
+    if (auto* rigEditor = dynamic_cast<RigEditor*> (editor.get()); rigEditor != nullptr && tone3000Open.isNotEmpty())
+    {
+        const auto key = tone3000Open.upToFirstOccurrenceOf (":", false, false);
+        const auto slotId = key == "cab" ? rig::FileSlot::cab : key == "power" ? rig::FileSlot::power : rig::FileSlot::amp;
+        rigEditor->openTone3000 (slotId, false);
+        const auto what = tone3000Open.fromFirstOccurrenceOf (":", false, false);
+        if (const int toneId = what.getIntValue(); toneId > 0)
+            rigEditor->getTone3000Browser()->openTone (slotId, toneId);
+        else if (what.isNotEmpty())
+            rigEditor->getTone3000Browser()->showList (what);   // e.g. amp:trending
+    }
+
+    if (waitMs > 0)
+    {
+        juce::MessageManager::getInstance()->runDispatchLoopUntil (waitMs);
+        if (auto* rig = dynamic_cast<RigProcessor*> (processor.get()))
+            for (auto s : { rig::AmpStage::amp, rig::AmpStage::power })
+                std::cout << rig::fileSlotKey (rig::fileSlot (s)) << ": " << rig->getAmpFile (s).getFileName()
+                          << " [" << rig->getAmpProblem (s) << "] tone3000 " << rig->getTone3000Source (rig::fileSlot (s)).toneTitle << "\n";
     }
 
     const auto image = editor->createComponentSnapshot (editor->getLocalBounds(), true, scale);

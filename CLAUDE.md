@@ -43,6 +43,16 @@ commit and push here, then bump the pin in RoughTrack and check its
 - `tools/make_release.sh` makes the notarized download (the `dist` preset:
   universal, Developer ID); it uploads to Apple's notary service, so only run
   it when asked
+- TONE3000 (`tone3000/`, `rs::t3k`; the rig's browser is
+  `plugins/Rig/Source/Tone3000Browser`): the publishable key lives in
+  `tone3000/client_id.local` (git-ignored; never commit it). The session is
+  `~/Library/Application Support/RoughStomp/TONE3000/session.json`, shared by
+  every process; refresh tokens rotate, so renewing re-reads it under the
+  lock. Ask for A2 models first (the API hides them otherwise). TONE3000's
+  terms: download only what the user asks for, show "Powered by TONE3000",
+  the full logo before the T3K mark. `rs-t3k` tries the API from the command
+  line; `rs-rig-snapshot --tone3000=amp[:trending|:<toneId>] --wait=6`
+  pictures the browser
 - Branding is "RoughStomp" (manufacturer code Rstm, bundle IDs com.roughstomp.*)
 - fx-core and the NAM library are built with hidden symbols so the plugin can
   load inside RoughTrack, which has its own copy of NAM; keep it that way

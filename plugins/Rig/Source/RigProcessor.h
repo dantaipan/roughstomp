@@ -4,6 +4,7 @@
 #include <juce_dsp/juce_dsp.h>
 
 #include "AmpModel.h"
+#include "rs_t3k/Types.h"
 #include "fx/Chain.h"
 #include "fx/DelayLine.h"
 #include "fx/Handoff.h"
@@ -16,6 +17,7 @@
 #include <mutex>
 
 class PresetManager;
+namespace rs::t3k { class Service; }
 
 namespace rig
 {
@@ -26,6 +28,23 @@ constexpr int knobsPerSlot    = 8;
 
 /** Amps run before the loop, the power amp after it. */
 enum class AmpStage { amp, power };
+
+/** The slots that load a file: the two amps and the cab. */
+enum class FileSlot { amp, power, cab };
+inline FileSlot fileSlot (AmpStage s) noexcept { return s == AmpStage::amp ? FileSlot::amp : FileSlot::power; }
+juce::String fileSlotKey (FileSlot);   // "amp", "power", "cab"
+
+/** Where a slot's file came from when it's a TONE3000 download: what to show
+    for it, and what to download again if the file has gone. */
+struct Tone3000Source
+{
+    int toneId = 0, modelId = 0;
+    juce::String toneTitle, modelName, creator, gear, format, license, imageUrl, toneUrl;
+
+    bool valid() const noexcept { return toneId > 0 && modelId > 0; }
+    static Tone3000Source from (const rs::t3k::Tone&, const rs::t3k::Model&);
+    rs::t3k::Tone tone() const;   // enough of one to find or make its download
+};
 
 juce::String sectionKey (Section);                         // "pre", "loop"
 juce::ParameterID slotOnID   (Section, int slot);           // "pre1_on"
@@ -168,6 +187,26 @@ public:
     juce::File getCabinetFile() const;
     juce::String getCabinetProblem() const;
 
+    // TONE3000 (message thread) ------------------------------------------------
+
+    /** Downloads the model (unless it already has) and loads it into the
+        slot, keeping where it came from with the session. done gets an
+        error, or empty on success. */
+    void loadTone3000 (rig::FileSlot, const rs::t3k::Tone&, const rs::t3k::Model&,
+                       std::function<void (const juce::String&)> done = {});
+
+    /** What a slot's file came from on TONE3000 (invalid for a local file).
+        Loading a local file or clearing the slot forgets it. */
+    rig::Tone3000Source getTone3000Source (rig::FileSlot) const;
+    void forgetTone3000Source (rig::FileSlot);
+
+    /** Downloads again any TONE3000 file a restored session needed but
+        couldn't find (e.g. once the user has signed in). */
+    void retryTone3000Downloads();
+
+    /** The process's TONE3000 connection, made the first time it's needed. */
+    rs::t3k::Service& tone3000();
+
 private:
     struct Slot
     {
@@ -238,6 +277,14 @@ private:
     double cabinetSourceRate = 0.0;
     double cabinetRate = 0.0;                 // the rate it was last handed to `cabinet` at
     float cabinetGain = 4.0f;                 // audio thread; set in prepareToPlay
+
+    std::array<rig::Tone3000Source, 3> tone3000Sources;   // by FileSlot; messageLock
+    std::unique_ptr<juce::SharedResourcePointer<rs::t3k::Service>> tone3000Service;
+
+    /** The slot's TONE3000 file is missing: download it again (or say why
+        it can't) and load it. */
+    void redownload (rig::FileSlot, const rig::Tone3000Source&, const juce::File&);
+    void setSlotProblem (rig::FileSlot, const juce::File&, const juce::String& problem);
 
     /** Resamples the IR to the current rate (with fx's resampler: JUCE's own
         lets through highs the cab should cut) and hands it to the convolver.

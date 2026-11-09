@@ -10,7 +10,8 @@ target_sources(rs-rig-snapshot PRIVATE
     ${rig_source}/Presets.cpp
     ${rig_source}/RigEditor.cpp
     ${rig_source}/RigProcessor.cpp
-    ${rig_source}/SlotView.cpp)
+    ${rig_source}/SlotView.cpp
+    ${rig_source}/Tone3000Browser.cpp)
 target_include_directories(rs-rig-snapshot PRIVATE ${rig_source})
 
 target_compile_definitions(rs-rig-snapshot PRIVATE
@@ -24,6 +25,8 @@ target_link_libraries(rs-rig-snapshot
     PRIVATE
         fx::core
         rs::ui
+        rs::t3k
+        RigTone3000Assets
         "$<LINK_LIBRARY:WHOLE_ARCHIVE,roughstomp_nam>"
         juce::juce_audio_utils
         juce::juce_dsp

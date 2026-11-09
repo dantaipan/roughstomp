@@ -29,6 +29,7 @@ include(cmake/NAM.cmake)
 
 # Shared pedal GUI (JUCE), then the plugins
 add_subdirectory(ui)
+add_subdirectory(tone3000)
 add_subdirectory(plugins/Overdrive)
 add_subdirectory(plugins/Rig)
 
@@ -38,6 +39,7 @@ if(ROUGHSTOMP_BUILD_TOOLS)
     add_subdirectory(tools/host-render)
     add_subdirectory(tools/rig-snapshot)
     add_subdirectory(tools/make-icon)
+    add_subdirectory(tools/t3k)
 endif()
 
 # Test host, built into build/<preset>/host/

@@ -1,0 +1,9 @@
+{
+  "data": [
+    { "id": 9001, "tone_id": 101, "name": "Clean | Room", "size": "standard", "architecture_version": "2",
+      "content_hash": "nam-content-abc", "model_url": "https://www.tone3000.com/api/v1/models/9001/download" },
+    { "id": 9002, "tone_id": 101, "name": "Clean | Close", "size": null, "architecture_version": "2",
+      "content_hash": "nam-content-def", "model_url": "https://www.tone3000.com/api/v1/models/9002/download" }
+  ],
+  "page": 1, "page_size": 300, "total": 2, "total_pages": 1
+}

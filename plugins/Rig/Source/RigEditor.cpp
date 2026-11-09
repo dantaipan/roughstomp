@@ -1,5 +1,7 @@
 #include "RigEditor.h"
 
+#include <rs_t3k/Config.h>
+
 namespace
 {
 // The family palette (shared with RoughTrack)
@@ -50,33 +52,74 @@ FilePanel::FilePanel (const juce::String& t, const juce::String& empty,
 {
     load.onClick  = [this] { if (onLoad)  onLoad(); };
     clear.onClick = [this] { if (onClear) onClear(); };
+    tone3000.onClick = [this] { if (onTone3000) onTone3000(); };
+    clear.setTooltip ("Clear");
+    tone3000.setTooltip ("Choose from TONE3000's library");
+    name.addMouseListener (this, false);   // a TONE3000 file's name opens its tone
 
     name.setFont (fam::font (14.0f));
     name.setColour (juce::Label::textColourId, ink);
     name.setMinimumHorizontalScale (1.0f);   // long names end in "..." rather than squashing
     problem.setFont (fam::font (12.0f));
     problem.setColour (juce::Label::textColourId, warning);
-    problem.setMinimumHorizontalScale (0.5f);
+    problem.setMinimumHorizontalScale (0.9f);
 
     for (auto* c : std::initializer_list<juce::Component*> { &load, &clear, &name, &problem, &on })
         addAndMakeVisible (c);
+    addChildComponent (tone3000);
 }
 
-void FilePanel::show (const juce::File& file, const juce::String& problemText)
+void FilePanel::setTone3000Available (bool available)
+{
+    tone3000.setVisible (available);
+    resized();
+}
+
+void FilePanel::mouseUp (const juce::MouseEvent& e)
+{
+    if (e.eventComponent == &name && e.mouseWasClicked() && fromTone3000 && onShowTone3000)
+        onShowTone3000();
+}
+
+void FilePanel::show (const juce::File& file, const juce::String& problemText, const rig::Tone3000Source& source)
 {
     const bool has = file != juce::File();
-    name.setText (has ? file.getFileNameWithoutExtension() : emptyText, juce::dontSendNotification);
+    const bool t3k = has && source.valid();
+    if (t3k != fromTone3000)
+    {
+        fromTone3000 = t3k;
+        name.setMouseCursor (t3k ? juce::MouseCursor::PointingHandCursor : juce::MouseCursor::NormalCursor);
+        repaint();   // the T3K mark
+    }
+
+    // A TONE3000 file shows as its tone (the file name is the model's id and name)
+    name.setText (t3k ? source.toneTitle : has ? file.getFileNameWithoutExtension() : emptyText, juce::dontSendNotification);
     name.setColour (juce::Label::textColourId, has ? ink : fam::dimText);
-    name.setTooltip (has ? file.getFullPathName() : juce::String());
-    problem.setText (problemText, juce::dontSendNotification);
-    problem.setColour (juce::Label::textColourId, problemText.startsWith ("Loading") ? fam::dimText : warning);
-    problem.setTooltip (problemText);
+    name.setTooltip (t3k ? source.toneTitle + " by " + source.creator + " (TONE3000): click to switch models"
+                         : has ? file.getFullPathName() : juce::String());
+
+    // Under it: a problem if there is one, else a TONE3000 file's model and creator
+    const bool busy = problemText.startsWith ("Loading") || problemText.startsWith ("Downloading");
+    const auto second = problemText.isNotEmpty() ? problemText
+                      : t3k ? source.modelName + "  \xc2\xb7  by " + source.creator : juce::String();
+    problem.setText (second, juce::dontSendNotification);
+    problem.setColour (juce::Label::textColourId, problemText.isEmpty() || busy ? fam::dimText : warning);
+    problem.setTooltip (second);
     clear.setEnabled (has);
 }
 
 void FilePanel::paint (juce::Graphics& g)
 {
     drawBox (g, getLocalBounds().toFloat(), title);
+
+    // A TONE3000 file: the T3K mark after the title
+    if (fromTone3000)
+    {
+        const auto mark = tone3000Logos::compact();
+        const float h = 13.0f, w = h * static_cast<float> (mark.getWidth()) / static_cast<float> (mark.getHeight());
+        const float x = 12.0f + juce::GlyphArrangement::getStringWidth (fam::font (15.0f), title) + 10.0f;
+        g.drawImage (mark, juce::Rectangle<float> (x, 8.0f + 10.0f - h * 0.5f, w, h));
+    }
 }
 
 void FilePanel::resized()
@@ -86,16 +129,21 @@ void FilePanel::resized()
     auto b = getLocalBounds().reduced (12, 8);
     auto top = b.removeFromTop (20);
     on.setBounds (top.removeFromRight (56));
+    auto buttons = b.removeFromBottom (26);   // the whole width: the extra controls end above it
     extraArea = b.removeFromRight (extraWidth);
 
     b.removeFromTop (6);
     name.setBounds (b.removeFromTop (24));
     problem.setBounds (b.removeFromTop (30));
 
-    auto buttons = b.removeFromBottom (26);
-    load.setBounds (buttons.removeFromLeft (68));
+    load.setBounds (buttons.removeFromLeft (66));
     buttons.removeFromLeft (6);
-    clear.setBounds (buttons.removeFromLeft (54));
+    if (tone3000.isVisible())
+    {
+        tone3000.setBounds (buttons.removeFromLeft (92));
+        buttons.removeFromLeft (6);
+    }
+    clear.setBounds (buttons.removeFromLeft (28));
 }
 
 //==============================================================================
@@ -159,6 +207,18 @@ RigEditor::RigEditor (RigProcessor& p)
     powerPanel.onClear = [this] { rigProcessor.clearAmp (rig::AmpStage::power); refreshPanels(); };
     cabPanel.onLoad    = [this] { chooseCabinet(); };
     cabPanel.onClear   = [this] { rigProcessor.clearCabinet(); refreshPanels(); };
+
+    // TONE3000: the same three slots
+    const std::array<std::pair<FilePanel*, rig::FileSlot>, 3> t3kPanels { { { &ampPanel, rig::FileSlot::amp },
+                                                                            { &powerPanel, rig::FileSlot::power },
+                                                                            { &cabPanel, rig::FileSlot::cab } } };
+    const bool t3kAvailable = rs::t3k::config::clientId().isNotEmpty();
+    for (auto [panelPtr, slotId] : t3kPanels)
+    {
+        panelPtr->setTone3000Available (t3kAvailable);
+        panelPtr->onTone3000 = [this, s = slotId] { openTone3000 (s, false); };
+        panelPtr->onShowTone3000 = [this, s = slotId] { openTone3000 (s, true); };
+    }
     ampPanel.setExtraWidth (120);   // the amp's Gain and Level
 
 
@@ -209,9 +269,12 @@ void RigEditor::refreshPanels()
         const auto loading = rigProcessor.getLoadingAmpFile (s);
         return loading != juce::File() ? loading : rigProcessor.getAmpFile (s);
     };
-    ampPanel.show   (ampFile (rig::AmpStage::amp),   rigProcessor.getAmpProblem (rig::AmpStage::amp));
-    powerPanel.show (ampFile (rig::AmpStage::power), rigProcessor.getAmpProblem (rig::AmpStage::power));
-    cabPanel.show   (rigProcessor.getCabinetFile(),                  rigProcessor.getCabinetProblem());
+    ampPanel.show   (ampFile (rig::AmpStage::amp),   rigProcessor.getAmpProblem (rig::AmpStage::amp),
+                     rigProcessor.getTone3000Source (rig::FileSlot::amp));
+    powerPanel.show (ampFile (rig::AmpStage::power), rigProcessor.getAmpProblem (rig::AmpStage::power),
+                     rigProcessor.getTone3000Source (rig::FileSlot::power));
+    cabPanel.show   (rigProcessor.getCabinetFile(),                  rigProcessor.getCabinetProblem(),
+                     rigProcessor.getTone3000Source (rig::FileSlot::cab));
 }
 
 void RigEditor::chooseAmp (rig::AmpStage stage)
@@ -229,8 +292,10 @@ void RigEditor::chooseAmp (rig::AmpStage stage)
                               // In the background: big captures take a moment
                               juce::Component::SafePointer<RigEditor> safe (this);
                               rigProcessor.loadAmpAsync (stage, file, RigProcessor::AmpLoad::keepOld,
-                                                         [safe, file] (const juce::String& error)
+                                                         [safe, file, stage] (const juce::String& error)
                               {
+                                  if (error.isEmpty() && safe != nullptr)
+                                      safe->rigProcessor.forgetTone3000Source (rig::fileSlot (stage));   // a local file now
                                   if (error.isNotEmpty())
                                       juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon,
                                                                               "Couldn't load " + file.getFileName(), error);
@@ -239,6 +304,21 @@ void RigEditor::chooseAmp (rig::AmpStage stage)
                               });
                               refreshPanels();
                           });
+}
+
+void RigEditor::openTone3000 (rig::FileSlot s, bool atItsTone)
+{
+    if (tone3000Browser == nullptr)
+    {
+        tone3000Browser = std::make_unique<Tone3000Browser> (rigProcessor, rigProcessor.tone3000());
+        tone3000Browser->onClose = [this] { refreshPanels(); };
+        board.addChildComponent (*tone3000Browser);
+        layoutBoard();
+    }
+    if (const auto source = rigProcessor.getTone3000Source (s); atItsTone && source.valid())
+        tone3000Browser->openTone (s, source.toneId);
+    else
+        tone3000Browser->openFor (s);
 }
 
 void RigEditor::chooseCabinet()
@@ -255,6 +335,8 @@ void RigEditor::chooseCabinet()
                               if (const auto error = rigProcessor.loadCabinet (file); error.isNotEmpty())
                                   juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon,
                                                                           "Couldn't load " + file.getFileName(), error);
+                              else
+                                  rigProcessor.forgetTone3000Source (rig::FileSlot::cab);   // a local file now
                               refreshPanels();
                           });
 }
@@ -372,7 +454,9 @@ void RigEditor::layoutBoard()
 
     auto knobArea = [] (juce::Rectangle<int> box)
     {
-        return box.reduced (10, 8).withTrimmedTop (boxTitleHeight).withTrimmedBottom (boxButtonsHeight);
+        // Nudged up, so the labels clear the boxes' bottom row of buttons
+        constexpr int lift = 8;
+        return box.reduced (10, 8).withTrimmedTop (boxTitleHeight - lift).withTrimmedBottom (boxButtonsHeight + lift);
     };
 
     {
@@ -400,6 +484,10 @@ void RigEditor::layoutBoard()
     }
 
     tuner.setBounds (ampArea.withTrimmedLeft (-4));   // the row's full width
+
+    // TONE3000's browser covers everything under the header
+    if (tone3000Browser != nullptr)
+        tone3000Browser->setBounds (board.getLocalBounds().withTrimmedTop (headerHeight).reduced (margin, 0).withTrimmedBottom (margin));
 }
 
 //==============================================================================

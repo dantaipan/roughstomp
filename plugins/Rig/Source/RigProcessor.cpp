@@ -4,6 +4,7 @@
 #include "Presets.h"
 
 #include <juce_audio_formats/juce_audio_formats.h>
+#include <rs_t3k/Service.h>
 
 #include <cmath>
 
@@ -13,6 +14,42 @@ using rig::AmpStage;
 namespace rig
 {
 juce::String sectionKey (Section s) { return s == Section::pre ? "pre" : "loop"; }
+
+juce::String fileSlotKey (FileSlot s)
+{
+    return s == FileSlot::amp ? "amp" : s == FileSlot::power ? "power" : "cab";
+}
+
+Tone3000Source Tone3000Source::from (const rs::t3k::Tone& t, const rs::t3k::Model& m)
+{
+    Tone3000Source s;
+    s.toneId = t.id;
+    s.modelId = m.id;
+    s.toneTitle = t.title;
+    s.modelName = m.name;
+    s.creator = t.creator.name();
+    s.gear = t.gear;
+    s.format = t.format;
+    s.license = t.license;
+    s.imageUrl = t.image();
+    s.toneUrl = t.url;
+    return s;
+}
+
+rs::t3k::Tone Tone3000Source::tone() const
+{
+    rs::t3k::Tone t;
+    t.id = toneId;
+    t.title = toneTitle;
+    t.format = format;
+    t.gear = gear;
+    t.license = license;
+    t.url = toneUrl;
+    if (imageUrl.isNotEmpty())
+        t.images.add (imageUrl);
+    t.creator.displayName = creator;
+    return t;
+}
 
 juce::ParameterID slotOnID (Section s, int i)
 {
@@ -483,6 +520,7 @@ void RigProcessor::clearAmp (AmpStage stage)
         a.expectedRate = 0.0;
         a.latency = 0;
         a.problem = {};
+        tone3000Sources[static_cast<size_t> (rig::fileSlot (stage))] = {};
     }
     updateLatency();
 }
@@ -588,6 +626,156 @@ void RigProcessor::clearCabinet()
     cabinetFile = juce::File();
     cabinetProblem = {};
     cabinetSource.setSize (0, 0);
+    tone3000Sources[static_cast<size_t> (rig::FileSlot::cab)] = {};
+}
+
+//==============================================================================
+// TONE3000
+
+rs::t3k::Service& RigProcessor::tone3000()
+{
+    if (tone3000Service == nullptr)
+        tone3000Service = std::make_unique<juce::SharedResourcePointer<rs::t3k::Service>>();
+    return **tone3000Service;
+}
+
+rig::Tone3000Source RigProcessor::getTone3000Source (rig::FileSlot s) const
+{
+    const std::scoped_lock lock (messageLock);
+    return tone3000Sources[static_cast<size_t> (s)];
+}
+
+void RigProcessor::forgetTone3000Source (rig::FileSlot s)
+{
+    const std::scoped_lock lock (messageLock);
+    tone3000Sources[static_cast<size_t> (s)] = {};
+}
+
+void RigProcessor::loadTone3000 (rig::FileSlot slotId, const rs::t3k::Tone& tone, const rs::t3k::Model& model,
+                                 std::function<void (const juce::String&)> done)
+{
+    juce::WeakReference<RigProcessor> self (this);
+    const auto source = rig::Tone3000Source::from (tone, model);
+
+    tone3000().download (tone, model, [self, slotId, source, done] (const juce::File& file, const juce::String& error)
+    {
+        auto* p = self.get();
+        if (p == nullptr)
+            return;
+        if (! file.existsAsFile())
+        {
+            if (done)
+                done (error.isNotEmpty() ? error : juce::String ("The download failed."));
+            return;
+        }
+
+        auto loaded = [self, slotId, source, done] (const juce::String& loadError)
+        {
+            if (auto* q = self.get(); q != nullptr && loadError.isEmpty())
+            {
+                const std::scoped_lock lock (q->messageLock);
+                q->tone3000Sources[static_cast<size_t> (slotId)] = source;
+            }
+            if (done)
+                done (loadError);
+        };
+
+        if (slotId == rig::FileSlot::cab)
+            loaded (p->loadCabinet (file));
+        else
+            p->loadAmpAsync (slotId == rig::FileSlot::amp ? AmpStage::amp : AmpStage::power, file,
+                             AmpLoad::keepOld, loaded);
+    });
+}
+
+void RigProcessor::setSlotProblem (rig::FileSlot s, const juce::File& file, const juce::String& problem)
+{
+    if (s == rig::FileSlot::cab)
+    {
+        const std::scoped_lock lock (messageLock);
+        cabinetLoaded = false;
+        cabinetSource.setSize (0, 0);
+        cabinetFile = file;
+        cabinetProblem = problem;
+        return;
+    }
+    {
+        const std::scoped_lock lock (messageLock);
+        auto& a = amp (s == rig::FileSlot::amp ? AmpStage::amp : AmpStage::power);
+        ++a.generation;
+        a.handoff.publish (std::make_unique<Amps>());
+        a.file = file;
+        a.loadingFile = juce::File();
+        a.expectedRate = 0.0;
+        a.latency = 0;
+        a.problem = problem;
+    }
+    updateLatency();
+}
+
+void RigProcessor::redownload (rig::FileSlot s, const rig::Tone3000Source& source, const juce::File& file)
+{
+    {
+        const std::scoped_lock lock (messageLock);
+        tone3000Sources[static_cast<size_t> (s)] = source;
+    }
+
+    auto& service = tone3000();
+    if (! service.isAvailable())
+        return setSlotProblem (s, file, "From TONE3000, which this build can't reach");
+    if (! service.isSignedIn())
+        return setSlotProblem (s, file, "Sign in to TONE3000 to download it again");
+
+    setSlotProblem (s, file, "Downloading from TONE3000...");
+
+    // Still waiting for this? (The user may have loaded something else since.)
+    juce::WeakReference<RigProcessor> self (this);
+    auto stillWanted = [self, s, file, source]
+    {
+        auto* p = self.get();
+        if (p == nullptr)
+            return false;
+        const auto current = p->getTone3000Source (s);
+        const auto currentFile = s == rig::FileSlot::cab ? p->getCabinetFile()
+                                                         : p->getAmpFile (s == rig::FileSlot::amp ? AmpStage::amp : AmpStage::power);
+        return current.modelId == source.modelId && currentFile == file;
+    };
+
+    service.model (source.modelId, [self, s, file, source, stillWanted] (bool ok, const rs::t3k::Model& model, const juce::String& error)
+    {
+        if (! stillWanted())
+            return;
+        auto* p = self.get();
+        if (! ok)
+            return p->setSlotProblem (s, file, rs::t3k::Service::isUnavailable (p->tone3000().lastStatus())
+                                                   ? juce::String ("No longer available on TONE3000")
+                                                   : error);
+
+        p->tone3000().download (source.tone(), model, [self, s, file, stillWanted] (const juce::File& got, const juce::String& e)
+        {
+            if (! stillWanted())
+                return;
+            auto* q = self.get();
+            if (! got.existsAsFile())
+                return q->setSlotProblem (s, file, e);
+            if (s == rig::FileSlot::cab)
+                q->loadCabinet (got);
+            else
+                q->loadAmpAsync (s == rig::FileSlot::amp ? AmpStage::amp : AmpStage::power, got, AmpLoad::showNewNow);
+        });
+    });
+}
+
+void RigProcessor::retryTone3000Downloads()
+{
+    for (auto s : { rig::FileSlot::amp, rig::FileSlot::power, rig::FileSlot::cab })
+    {
+        const auto source = getTone3000Source (s);
+        const auto file = s == rig::FileSlot::cab ? getCabinetFile()
+                                                  : getAmpFile (s == rig::FileSlot::amp ? AmpStage::amp : AmpStage::power);
+        if (source.valid() && file != juce::File() && ! file.existsAsFile())
+            redownload (s, source, file);
+    }
 }
 
 juce::String RigProcessor::getCabinetProblem() const
@@ -943,6 +1131,25 @@ std::unique_ptr<juce::XmlElement> RigProcessor::captureState()
     rigTree.setProperty ("powerFile", getAmpFile (AmpStage::power).getFullPathName(), nullptr);
     rigTree.setProperty ("cabFile",   getCabinetFile().getFullPathName(), nullptr);
 
+    // Files from TONE3000: what they were, to show and to download again
+    for (auto s : { rig::FileSlot::amp, rig::FileSlot::power, rig::FileSlot::cab })
+        if (const auto t = getTone3000Source (s); t.valid())
+        {
+            juce::ValueTree node ("Tone3000");
+            node.setProperty ("slot", rig::fileSlotKey (s), nullptr);
+            node.setProperty ("toneId", t.toneId, nullptr);
+            node.setProperty ("modelId", t.modelId, nullptr);
+            node.setProperty ("toneTitle", t.toneTitle, nullptr);
+            node.setProperty ("modelName", t.modelName, nullptr);
+            node.setProperty ("creator", t.creator, nullptr);
+            node.setProperty ("gear", t.gear, nullptr);
+            node.setProperty ("format", t.format, nullptr);
+            node.setProperty ("license", t.license, nullptr);
+            node.setProperty ("imageUrl", t.imageUrl, nullptr);
+            node.setProperty ("toneUrl", t.toneUrl, nullptr);
+            rigTree.appendChild (node, nullptr);
+        }
+
     {
         const std::scoped_lock lock (messageLock);
         rigTree.setProperty ("preset", presetName, nullptr);
@@ -988,8 +1195,42 @@ void RigProcessor::restoreState (const juce::XmlElement& xml, Files files)
     if (files == Files::keepCurrent)
         return;
 
+    std::array<rig::Tone3000Source, 3> sources {};
+    for (const auto& node : rigTree)
+    {
+        if (! node.hasType ("Tone3000"))
+            continue;
+        for (auto s : { rig::FileSlot::amp, rig::FileSlot::power, rig::FileSlot::cab })
+            if (node.getProperty ("slot").toString() == rig::fileSlotKey (s))
+            {
+                auto& t = sources[static_cast<size_t> (s)];
+                t.toneId = node.getProperty ("toneId");
+                t.modelId = node.getProperty ("modelId");
+                t.toneTitle = node.getProperty ("toneTitle").toString();
+                t.modelName = node.getProperty ("modelName").toString();
+                t.creator = node.getProperty ("creator").toString();
+                t.gear = node.getProperty ("gear").toString();
+                t.format = node.getProperty ("format").toString();
+                t.license = node.getProperty ("license").toString();
+                t.imageUrl = node.getProperty ("imageUrl").toString();
+                t.toneUrl = node.getProperty ("toneUrl").toString();
+            }
+    }
+
+    // A TONE3000 file that's gone (a new Mac, a cleared folder) is downloaded again
+    auto missingTone3000 = [&] (rig::FileSlot s, const juce::String& path)
+    {
+        const auto& t = sources[static_cast<size_t> (s)];
+        if (! t.valid() || path.isEmpty() || juce::File (path).existsAsFile())
+            return false;
+        redownload (s, t, juce::File (path));
+        return true;
+    };
+
     auto restore = [&] (AmpStage stage, const juce::String& path)
     {
+        if (missingTone3000 (rig::fileSlot (stage), path))
+            return;
         if (path.isEmpty())
             clearAmp (stage);
         else if (files == Files::restoreInBackground)
@@ -1009,10 +1250,18 @@ void RigProcessor::restoreState (const juce::XmlElement& xml, Files files)
     restore (AmpStage::amp, rigTree.getProperty ("ampFile").toString());
     restore (AmpStage::power, rigTree.getProperty ("powerFile").toString());
 
-    if (const auto cab = rigTree.getProperty ("cabFile").toString(); cab.isNotEmpty())
+    if (const auto cab = rigTree.getProperty ("cabFile").toString(); missingTone3000 (rig::FileSlot::cab, cab))
+        ;
+    else if (cab.isNotEmpty())
         loadCabinet (juce::File (cab));
     else
         clearCabinet();
+
+    // The files are in; now what they came from (local files have none)
+    {
+        const std::scoped_lock lock (messageLock);
+        tone3000Sources = sources;
+    }
 }
 
 void RigProcessor::setPresetName (const juce::String& name, bool modified)

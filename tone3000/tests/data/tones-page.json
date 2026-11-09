@@ -1,0 +1,17 @@
+{
+  "data": [
+    {
+      "id": 101, "title": "Clean Amp", "description": "A clean amp.", "gear": "amp-cab", "format": "nam",
+      "license": "t3k", "url": "https://www.tone3000.com/tones/clean-amp-101", "is_public": true,
+      "images": ["https://assets.tone3000.com/clean.jpg"],
+      "a1_models_count": 2, "a2_models_count": 3, "irs_count": 0, "custom_models_count": 0,
+      "user": { "id": "u1", "username": "maker", "display_name": null, "avatar_url": "https://assets.tone3000.com/a.jpg", "url": "https://www.tone3000.com/maker" }
+    },
+    {
+      "id": 102, "title": "Studio Room", "gear": "space", "format": "ir", "license": "cc-by",
+      "images": [], "irs_count": 4,
+      "user": { "id": "u2", "username": "roomie", "display_name": "Room Person" }
+    }
+  ],
+  "page": 1, "page_size": 2, "total": 5, "total_pages": 3
+}

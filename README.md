@@ -36,11 +36,22 @@ Plugins (VST3, AU and a standalone app each):
 - **Gate:** next to *Input*. Switch it on and turn *Threshold* up until the hiss between notes goes.
 - **Window:** drag the corner to resize (70–150%); sessions remember the size.
 - **Look:** everything around the pedals matches RoughTrack (same colours, buttons, menus, knobs and strobe tuner, from `ui/include/rs_ui/Family.h`); only the pedals look like hardware, on purpose.
-- **Amp:** *Load...* a `.nam` capture. *Gain* drives the capture, *Level* sets what comes out (captures are levelled to the same loudness automatically).
+- **Amp:** *Load...* a `.nam` capture, or choose one from *TONE3000* (below). *Gain* drives the capture, *Level* sets what comes out (captures are levelled to the same loudness automatically).
 - **Power amp:** optional. Leave it empty for normal captures, which already include the power amp. For a true pre/power split, load a preamp-only capture as the amp and a power-amp capture here. It runs once per stereo side, so it costs twice the CPU of the amp.
-- **Cab:** *Load...* an IR (WAV/AIFF). Switch it off for "full rig" captures that already include a cab.
+- **Cab:** *Load...* an IR (WAV/AIFF), or choose one from *TONE3000*. Switch it off for "full rig" captures that already include a cab.
 - **Sample rate:** any rate works. A capture runs at the rate it was made at (usually 48 kHz); at any other rate it is resampled, which adds about 1.5 ms of latency (reported to the host, so it's compensated). Cabinet IRs are resampled to the session rate too.
 - Sessions remember everything, including the file paths. A missing file is flagged in amber and its path is kept.
+
+## TONE3000
+
+**Powered by [TONE3000](https://www.tone3000.com).** The *TONE3000* button in the Amp, Power amp and Cab boxes opens TONE3000's library of NAM captures and IRs of real gear, made by a community of musicians:
+
+- **Sign in** once: RoughStomp shows a code to confirm at tone3000.com. Every RoughStomp shares the sign-in (the app, and the plugin in any host). *Sign out* is at the top of the browser.
+- **Your lists**: *Favorites*, *Created* and *Downloaded*, plus what's *Trending* and the *Latest*, showing what the slot can load (captures for the amps, IRs for the cab).
+- **Browse TONE3000** opens TONE3000's own picker in your web browser, for searching the whole catalog; the tone you choose comes back to RoughStomp.
+- **A tone** shows its models (pick one), its description and its licence; *Load* downloads the model and loads it like a file of your own. Respect each tone's licence: it's the creator's.
+- **Loaded**, a slot shows the tone with the T3K mark; click its name to switch to another model of the same tone.
+- Downloads are kept in `~/Library/Application Support/RoughStomp/TONE3000/Downloads`, so sessions and presets reopen offline. On another Mac, or if a file has gone, it's downloaded again once you're signed in.
 
 ## First-time setup (macOS)
 
@@ -177,6 +188,8 @@ Breakpoints in `plugins/` and `fx-core/` hit inside the host.
 - `tools/validate.sh` — pluginval runner
 - `tools/render/` — rs-render: fx-core effects over a WAV
 - `tools/host-render/` — rs-host-render: a built plugin over a WAV
+- `tone3000/` — TONE3000 (`rs::t3k`): sign-in, lists, models, downloads and the Select flow, JUCE-only, with its own tests (`t3k-tests`)
+- `tools/t3k/` — rs-t3k: TONE3000 from the command line, through the same library
 
 ## Using fx-core in RoughTrack
 
@@ -202,6 +215,11 @@ RoughTrack uses work):
 xcrun notarytool store-credentials roughtrack-notary --apple-id <email> --team-id <team>
 tools/make_release.sh
 ```
+
+TONE3000 needs RoughStomp's publishable key (client ID) in
+`tone3000/client_id.local`, which git ignores; every build reads it, and the
+release script stops if it's missing. (A build without it simply doesn't
+offer TONE3000.)
 
 The disk image holds `RoughStomp.app` (drag it to Applications) and a
 `Plugins` folder with the two plugins, links to the plugin folders and a note

@@ -20,6 +20,14 @@ juce_add_plugin(Rig
     AU_MAIN_TYPE             kAudioUnitType_Effect
     VST3_CATEGORIES          Fx Distortion)
 
+# TONE3000's logos, for its browser (resources/tone3000)
+juce_add_binary_data(RigTone3000Assets
+    HEADER_NAME Tone3000Assets.h
+    NAMESPACE Tone3000Assets
+    SOURCES
+        ${CMAKE_SOURCE_DIR}/resources/tone3000/tone3000-logo.png
+        ${CMAKE_SOURCE_DIR}/resources/tone3000/t3k-logo.png)
+
 target_sources(Rig PRIVATE
     Source/AmpModel.cpp
     Source/AmpModel.h
@@ -30,7 +38,9 @@ target_sources(Rig PRIVATE
     Source/RigProcessor.cpp
     Source/RigProcessor.h
     Source/SlotView.cpp
-    Source/SlotView.h)
+    Source/SlotView.h
+    Source/Tone3000Browser.cpp
+    Source/Tone3000Browser.h)
 
 target_compile_definitions(Rig PUBLIC
     JUCE_WEB_BROWSER=0
@@ -41,6 +51,8 @@ target_link_libraries(Rig
     PRIVATE
         fx::core
         rs::ui
+        rs::t3k
+        RigTone3000Assets
         # NAM's model types register themselves from static objects that
         # nothing refers to, so link the whole archive or they'd be dropped
         "$<LINK_LIBRARY:WHOLE_ARCHIVE,roughstomp_nam>"

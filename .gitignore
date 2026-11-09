@@ -4,3 +4,4 @@ compile_commands.json
 .DS_Store
 *.swp
 dist/
+tone3000/client_id.local

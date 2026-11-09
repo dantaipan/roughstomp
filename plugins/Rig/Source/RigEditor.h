@@ -3,6 +3,7 @@
 #include "Presets.h"
 #include "RigProcessor.h"
 #include "SlotView.h"
+#include "Tone3000Browser.h"
 #include "rs_ui/Pedal.h"
 
 /** A box for something loaded from a file (amp capture, cabinet IR):
@@ -14,9 +15,15 @@ public:
     FilePanel (const juce::String& title, const juce::String& emptyText,
                juce::AudioProcessorValueTreeState&, const juce::ParameterID& onParam);
 
-    void show (const juce::File&, const juce::String& problem);
+    /** source: where the file came from on TONE3000 (invalid for a local file). */
+    void show (const juce::File&, const juce::String& problem, const rig::Tone3000Source& source = {});
+
+    /** Whether to offer TONE3000 (not in a build without its key). */
+    void setTone3000Available (bool);
 
     std::function<void()> onLoad, onClear;
+    std::function<void()> onTone3000;       // the TONE3000 button
+    std::function<void()> onShowTone3000;   // clicking a TONE3000 file's name: its tone
 
     /** Room on the right for extra controls (the amp's knobs). */
     juce::Rectangle<int> getExtraArea() const noexcept { return extraArea; }
@@ -24,10 +31,12 @@ public:
 
     void paint (juce::Graphics&) override;
     void resized() override;
+    void mouseUp (const juce::MouseEvent&) override;
 
 private:
     juce::String title, emptyText;
-    juce::TextButton load { "Load..." }, clear { "Clear" };
+    juce::TextButton load { "Load..." }, clear { juce::String::fromUTF8 ("\xc3\x97") }, tone3000 { "TONE3000" };
+    bool fromTone3000 = false;
     juce::Label name, problem;
     juce::ToggleButton on { "On" };
     juce::AudioProcessorValueTreeState::ButtonAttachment onAttachment;
@@ -132,6 +141,15 @@ private:
     juce::AudioProcessorValueTreeState::ButtonAttachment loopOnAttachment;
 
     FilePanel ampPanel, powerPanel, cabPanel;
+    std::unique_ptr<Tone3000Browser> tone3000Browser;   // made the first time it's opened
+
+public:
+    /** Opens TONE3000's browser for a slot; atItsTone opens on the tone the
+        slot's file came from (if it did). */
+    void openTone3000 (rig::FileSlot, bool atItsTone);
+    Tone3000Browser* getTone3000Browser() noexcept { return tone3000Browser.get(); }
+
+private:
     std::unique_ptr<juce::FileChooser> chooser;
     juce::File lastFolder;
 
