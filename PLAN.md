@@ -174,7 +174,7 @@ Shared building blocks first:
 - [x] `DelayLine`: circular buffer with fractional delay — linear and 4-point Lagrange (cubic); allpass not needed so far
 
 Pedals (all stereo):
-- [x] **EQ** — 7-band graphic (octaves from 100 Hz, ±15 dB) plus level, on sliders with the real response curve drawn behind them (`fx/GraphicEq.h` is shared by the pedal and the GUI)
+- [x] **EQ** — 7-band graphic (octaves from 100 Hz, ±15 dB) plus level, on sliders; the caps show the curve
 - [x] **Chorus** — modulated 8–16 ms delay mixed with dry; 1–3 voices, stereo width
 - [x] **Delay** — digital, tape and ping-pong; free or synced to the host tempo; tails ring out when bypassed. Tape reworked 2026-11-08 as a speed-set tape echo: head bandwidth and wow/flutter/drift scale with the delay time (bright, steady slap-back; dark, wobbly long echoes), saturation on record, thinner repeats; Slapback factory preset
 - [x] **Reverb** — 8-line FDN with room, hall and plate voicings; pre-delay, tone; tails ring out when bypassed; every mode and size at the same loudness

@@ -118,7 +118,6 @@ void SlotView::rebuild()
                 f.slider->setPopupDisplayEnabled (true, true, popupParent);
                 f.attachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (apvts, id.getParamID(), *f.slider);
                 f.slider->setDoubleClickReturnValue (true, rig::toNormalised (info, info.defaultValue));
-                f.slider->onValueChange = [this] { repaint(); };
                 f.label = juce::String (std::string (info.name)).toUpperCase();
                 f.info = &info;
                 f.slider->setLookAndFeel (pedalLook.get());
@@ -242,7 +241,7 @@ void SlotView::paint (juce::Graphics& g)
     g.drawRoundedRectangle (body, 12.0f, dropHighlight ? 2.5f : 1.5f);
 
     if (! faders.empty())
-        paintEqCurve (g);
+        paintEqMarkings (g);
 
     // Pedal name above the footswitch
     g.setColour (colours.ink);
@@ -252,7 +251,7 @@ void SlotView::paint (juce::Graphics& g)
                 juce::Justification::centred);
 }
 
-void SlotView::paintEqCurve (juce::Graphics& g)
+void SlotView::paintEqMarkings (juce::Graphics& g)
 {
     const int numBands = std::min (fx::graphicEq::numBands, static_cast<int> (faders.size()));
     if (numBands < 2)
@@ -270,52 +269,15 @@ void SlotView::paintEqCurve (juce::Graphics& g)
                           juce::Justification::centred, 1, 0.8f);
     }
 
-    // Where a fader puts a given dB, so the curve lines up with the caps
+    // A faint 0 dB line across the bands: the caps themselves show the curve
     const auto* first = faders.front().slider.get();
     const auto& info = *faders.front().info;
-    auto yFor = [&] (double dB)
-    {
-        const auto clamped = static_cast<float> (juce::jlimit (static_cast<double> (info.minValue) - 3.0,
-                                                               static_cast<double> (info.maxValue) + 3.0, dB));
-        const double pos = first->getPositionOfValue (rig::toNormalised (info, juce::jlimit (info.minValue, info.maxValue, clamped)));
-        // Beyond the range: extend the scale past the ends
-        const double perDb = (first->getPositionOfValue (1.0) - first->getPositionOfValue (0.0)) / (info.maxValue - info.minValue);
-        const double extra = (clamped - juce::jlimit (info.minValue, info.maxValue, clamped)) * perDb;
-        return static_cast<float> (first->getY() + pos + extra);
-    };
-
-    // Octave bands: frequency maps to x on a log scale through the faders' centres
-    const float x0 = static_cast<float> (faders[0].slider->getBounds().getCentreX());
-    const float spacing = static_cast<float> (faders[1].slider->getBounds().getCentreX()) - x0;
-    const float left = x0 - spacing * 0.5f;
+    const auto y0 = static_cast<double> (first->getY()) + first->getPositionOfValue (rig::toNormalised (info, 0.0f));
+    const float spacing = static_cast<float> (faders[1].slider->getBounds().getCentreX() - faders[0].slider->getBounds().getCentreX());
+    const float left = static_cast<float> (faders[0].slider->getBounds().getCentreX()) - spacing * 0.5f;
     const float right = static_cast<float> (faders[static_cast<size_t> (numBands - 1)].slider->getBounds().getCentreX()) + spacing * 0.5f;
-
-    std::array<float, fx::graphicEq::numBands> gains {};
-    for (int b = 0; b < numBands; ++b)
-    {
-        const auto& f = faders[static_cast<size_t> (b)];
-        gains[static_cast<size_t> (b)] = rig::toPlain (*f.info, static_cast<float> (f.slider->getValue()));
-    }
-
-    // 0 dB line
     g.setColour (colours.ink.withAlpha (0.25f));
-    g.drawHorizontalLine (juce::roundToInt (yFor (0.0)), left, right);
-
-    juce::Path curve;
-    bool started = false;
-    for (float x = left; x <= right; x += 1.0f)
-    {
-        const double octaves = (x - x0) / spacing;
-        const double hz = fx::graphicEq::bandsHz[0] * std::exp2 (octaves);
-        const float y = yFor (fx::graphicEq::responseDb (gains, hz));
-        if (started)
-            curve.lineTo (x, y);
-        else
-            curve.startNewSubPath (x, y);
-        started = true;
-    }
-    g.setColour (colours.ink.withAlpha (0.85f));
-    g.strokePath (curve, juce::PathStrokeType (2.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    g.drawHorizontalLine (juce::roundToInt (y0), left, right);
 }
 
 void SlotView::resized()

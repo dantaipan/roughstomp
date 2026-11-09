@@ -17,7 +17,7 @@ Plugins (VST3, AU and a standalone app each):
 - **Pedals:** pick a pedal from the menu above a slot. Footswitch = on/off. Six slots before the amp, six in the FX loop. Any pedal goes in any slot:
   - *Overdrive*, *Boost*: for in front of the amp
   - *Fuzz* (lower *Bias* for a gated, sputtering sound), *Big Fuzz* (long sustain, scooped tone), *Clean Drive* (keeps the guitar's own sound; *Gain* brings in more grit), *Blues Drive* (touch-sensitive and amp-like, with full lows; cleans up as you play softer)
-  - *EQ*: 7-band graphic EQ (100 Hz to 6.4 kHz, ±15 dB) and level, on sliders, with its curve drawn behind them
+  - *EQ*: 7-band graphic EQ (100 Hz to 6.4 kHz, ±15 dB) and level, on sliders
   - *Chorus*: 1–3 voices, stereo width
   - *Tremolo*: sine, triangle or square; *Spread* pans it across the sides (100% = auto-pan)
   - *Vibrato*, *Flanger*, *Phaser*

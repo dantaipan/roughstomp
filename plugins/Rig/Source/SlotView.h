@@ -46,7 +46,7 @@ private:
     };
 
     bool isGraphicEq() const noexcept { return shown != nullptr && shown->style == fx::PedalInfo::Style::graphicEq; }
-    void paintEqCurve (juce::Graphics&);
+    void paintEqMarkings (juce::Graphics&);
 
     RigProcessor& rigProcessor;
     const rig::Section section;
