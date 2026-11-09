@@ -16,12 +16,12 @@ Plugins (VST3, AU and a standalone app each):
 
 - **Pedals:** pick a pedal from the menu above a slot. Footswitch = on/off. Six slots before the amp, six in the FX loop. Any pedal goes in any slot:
   - *Overdrive*, *Boost*: for in front of the amp
-  - *Fuzz* (lower *Bias* for a gated, sputtering sound), *Big Fuzz* (long sustain, scooped tone), *Clean Drive* (keeps the guitar's own sound; *Gain* brings in more grit)
+  - *Fuzz* (lower *Bias* for a gated, sputtering sound), *Big Fuzz* (long sustain, scooped tone), *Clean Drive* (keeps the guitar's own sound; *Gain* brings in more grit), *Blues Drive* (touch-sensitive and amp-like, with full lows; cleans up as you play softer)
   - *EQ*: 7-band graphic EQ (100 Hz to 6.4 kHz, ±15 dB) and level, on sliders, with its curve drawn behind them
   - *Chorus*: 1–3 voices, stereo width
   - *Tremolo*: sine, triangle or square; *Spread* pans it across the sides (100% = auto-pan)
   - *Vibrato*, *Flanger*, *Phaser*
-  - *Delay*: digital, tape or ping-pong
+  - *Delay*: digital, tape or ping-pong. Tape behaves like a tape echo: short times are bright and steady, long ones darker and wobblier, so *Tape* at about 80–140 ms with low *Feedback* is a slap-back (or load the *Slapback* preset)
   - *Reverb*: room, hall or plate; *Spring*: three springs with dwell
   - *Compressor*: sustain, attack, level, blend (parallel compression)
   - *Wah*: *Position* is the pedal (map an expression pedal or automation to it in your host), or *Auto* for an envelope filter
@@ -128,7 +128,7 @@ $H $P di.wav out.wav Rig.loop1=overdrive loopMix=50 pre1_on=0 input=3
 attribute (`ampFile`, `powerFile`, `cabFile`, `pre1`..`pre6`, `loop1`..`loop6`
 with pedal ids like `overdrive`, `boost`, `eq`, `chorus`, `delay`, `reverb`,
 `tremolo`, `vibrato`, `flanger`, `phaser`, `spring`, `compressor`, `wah`,
-`fuzz`, `bigfuzz`, `cleandrive`).
+`fuzz`, `bigfuzz`, `cleandrive`, `bluesdrive`).
 Slot knobs are `pre1_k1`.. and run 0..1 across the pedal's range (log for
 frequencies and times). A pedal set this way keeps the knobs' values rather
 than its own defaults, so set every knob you care about. Prints latency, peak and RMS.

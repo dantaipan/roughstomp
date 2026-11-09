@@ -40,6 +40,7 @@ rs::ui::PedalColours SlotView::coloursFor (const fx::PedalInfo* info)
     else if (id == "fuzz")       paint (0xff8e1b3a, 0xff5e1026);
     else if (id == "bigfuzz")    paint (0xff6b7a2e, 0xff47511e);
     else if (id == "cleandrive") paint (0xffb07a4a, 0xff7a5232);
+    else if (id == "bluesdrive") paint (0xff3b4f94, 0xff263466);
     return c;
 }
 

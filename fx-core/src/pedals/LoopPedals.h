@@ -107,9 +107,12 @@ private:
     std::vector<DelayLine> lines;   // per channel
 };
 
-/** Delay: digital, tape (darker, saturating repeats with wow and flutter)
-    or ping-pong; free time or synced to the host tempo. Tails ring out
-    when bypassed. */
+/** Delay: digital, tape or ping-pong; free time or synced to the host
+    tempo. Tails ring out when bypassed. Tape is modelled on a tape echo
+    whose time is set by the tape's speed: short times run the tape fast,
+    so a slap-back is bright and steady, while long echoes are darker and
+    wobble more. It saturates as it records, so the repeats compress as
+    they build up. */
 class DelayPedal final : public BasicPedal
 {
 public:
@@ -136,9 +139,11 @@ private:
     float fromDelay = 1.0f, toDelay = 1.0f;  // digital: crossfades between two read points
     int fadeRemaining = 0, fadeLength = 1;
     LinearSmoother send { 1.0f }, wetGain { 0.35f }, feedbackGain { 0.35f };
-    Lfo wow, flutter;
+    Lfo wow, flutter, drift;
     std::vector<DelayLine> lines;
     std::vector<OnePole> toneFilters, lowCuts;
+    std::vector<Biquad> tapeBandwidth;   // the playback head's top end: wider at higher tape speeds
+    float bandwidthDelay = -1.0f;        // the delay the bandwidth filters were set for
     bool primed = false;
 };
 
@@ -499,6 +504,33 @@ private:
     struct Channel { OnePole driveLowCut, driveTop; Biquad treble; DcBlocker dc; };
     std::vector<Channel> state;
     float lastTrebleDb = 1000.0f;
+};
+
+/** Blues Drive: the touch-sensitive, amp-like style. Two clipping stages,
+    each keeping its clean signal under the clipped part (diodes in the
+    feedback), so it cleans up with picking and the guitar's volume; full
+    lows, no strong mid hump. Gain goes from barely broken up to near fuzz,
+    Tone is an active treble cut and boost. */
+class BluesDrivePedal final : public DrivePedal
+{
+public:
+    enum Index { gain, tone, level };
+    static const PedalInfo& staticInfo();
+    BluesDrivePedal() : DrivePedal (staticInfo()) {}
+
+private:
+    void prepareDrive (double osRate, int maxOversampledBlock, int numChannels) override;
+    void resetDrive() noexcept override;
+    void setTargets (bool jump) noexcept override;
+    void processOversampled (float* const* x, int numChannels, int n) noexcept override;
+
+    double rate = 384000.0;
+    LinearSmoother gain1 { 1.0f }, gain2 { 1.0f }, levelGain { 1.0f };
+    OnePoleSmoother toneDb { 0.0f };
+    std::vector<float> g1, g2, lv;
+    struct Channel { OnePole input, leg1, leg2, top1, top2; Biquad tone, fizz; DcBlocker dc; };
+    std::vector<Channel> state;
+    float lastToneDb = 1000.0f;
 };
 
 } // namespace fx

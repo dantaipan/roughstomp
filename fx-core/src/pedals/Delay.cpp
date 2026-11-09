@@ -11,8 +11,20 @@ namespace
 constexpr double glideSeconds = 0.15;   // tape: time constant when the delay time changes (a pitch bend)
 constexpr double fadeSeconds = 0.05;    // digital: crossfade to a new time
 constexpr double lowCutHz = 80.0;       // keeps repeats from piling up mud
-constexpr double wowHz = 0.7, flutterHz = 6.3;
-constexpr double wowSeconds = 0.0008, flutterSeconds = 0.00012;   // peak deviation
+constexpr double tapeLowCutHz = 120.0;  // tape repeats are thinner, so they sit behind the guitar
+
+// Tape. The tape's speed sets the time, so the wobble is a fraction of the
+// delay (a long echo wobbles more), and the playback head's bandwidth falls
+// as the tape slows: about 7 kHz at a 100 ms slap, 3.5 kHz at 400 ms
+constexpr double wowHz = 0.7, flutterHz = 6.3, driftHz = 0.25;
+constexpr double wowDepth = 0.0012, flutterDepth = 0.0002, driftDepth = 0.0008;   // peak, as a fraction of the delay
+constexpr double headHzAt100ms = 7000.0, minHeadHz = 1800.0, maxHeadHz = 9000.0;
+constexpr float recordDrive = 1.5f;     // record saturation: unity for quiet signals, compresses loud ones
+
+double headBandwidthHz (double delaySeconds) noexcept
+{
+    return std::clamp (headHzAt100ms * std::sqrt (0.1 / std::max (delaySeconds, 0.001)), minHeadHz, maxHeadHz);
+}
 } // namespace
 
 const PedalInfo& DelayPedal::staticInfo()
@@ -55,8 +67,8 @@ void DelayPedal::prepare (double newSampleRate, int, int numChannels)
 
     toneFilters.assign (n, {});
     lowCuts.assign (n, {});
-    for (auto& f : lowCuts)
-        f.setup (OnePole::Mode::highPass, sampleRate, lowCutHz);
+    tapeBandwidth.assign (n, {});
+    bandwidthDelay = -1.0f;
 
     delaySamples.prepare (sampleRate, glideSeconds);
     fadeLength = std::max (1, static_cast<int> (fadeSeconds * sampleRate));
@@ -67,6 +79,9 @@ void DelayPedal::prepare (double newSampleRate, int, int numChannels)
     wow.setRate (wowHz);
     flutter.prepare (sampleRate);
     flutter.setRate (flutterHz);
+    drift.prepare (sampleRate);
+    drift.setRate (driftHz);
+    drift.setShape (Lfo::Shape::random);
     primed = false;
 }
 
@@ -78,8 +93,11 @@ void DelayPedal::reset()
         f.reset();
     for (auto& f : lowCuts)
         f.reset();
+    for (auto& f : tapeBandwidth)
+        f.reset();
     wow.reset();
     flutter.reset (0.3);
+    drift.reset();
 }
 
 void DelayPedal::process (float* const* channels, int numChannels, int numSamples)
@@ -87,10 +105,11 @@ void DelayPedal::process (float* const* channels, int numChannels, int numSample
     const auto m = static_cast<Mode> (choice (mode));
     const bool tape = m == Mode::tape;
 
-    // Tape repeats are darker
-    const double toneHz = std::min (static_cast<double> (value (tone)) * (tape ? 0.6 : 1.0), sampleRate * 0.45);
+    const double toneHz = std::min (static_cast<double> (value (tone)), sampleRate * 0.45);
     for (auto& f : toneFilters)
         f.setup (OnePole::Mode::lowPass, sampleRate, toneHz);
+    for (auto& f : lowCuts)
+        f.setup (OnePole::Mode::highPass, sampleRate, tape ? tapeLowCutHz : lowCutHz);
 
     delaySamples.setTarget (static_cast<float> (targetSeconds() * sampleRate));
     send.setTarget (isBypassed() ? 0.0f : 1.0f);   // bypassed: no new input, the tail rings out
@@ -111,17 +130,28 @@ void DelayPedal::process (float* const* channels, int numChannels, int numSample
 
     numChannels = std::min (numChannels, static_cast<int> (lines.size()));
     const bool pingPong = m == Mode::pingPong && numChannels == 2;
-    const auto wowDepth = static_cast<float> (wowSeconds * sampleRate);
-    const auto flutterDepth = static_cast<float> (flutterSeconds * sampleRate);
-
     const float target = delaySamples.getTarget();
+    const auto longest = static_cast<float> (maxSeconds * sampleRate);
+
+    // The head's bandwidth follows the (gliding) tape speed; set per block
+    if (tape && std::abs (delaySamples.getCurrent() - bandwidthDelay) > 0.002f * bandwidthDelay)
+    {
+        bandwidthDelay = delaySamples.getCurrent();
+        const double hz = std::min (headBandwidthHz (bandwidthDelay / sampleRate), sampleRate * 0.45);
+        const auto k = BiquadCoeffs::lowPass (sampleRate, hz, 0.6);
+        for (auto& f : tapeBandwidth)
+            f.setCoefficients (k);
+    }
 
     for (int i = 0; i < numSamples; ++i)
     {
         // Tape glides to a new time; digital fades over to it, keeping the pitch
         float d = delaySamples.next(), d2 = d, fade = 0.0f;
         if (tape)
-            d = d2 += wowDepth * wow.next() + flutterDepth * flutter.next();
+        {
+            const auto wobble = static_cast<float> (wowDepth * wow.next() + flutterDepth * flutter.next() + driftDepth * drift.next());
+            d = d2 = std::min (d * (1.0f + wobble), longest);
+        }
         else
         {
             if (fadeRemaining == 0 && std::abs (target - toDelay) >= 1.0f)
@@ -151,9 +181,9 @@ void DelayPedal::process (float* const* channels, int numChannels, int numSample
             float y = line.readCubic (d);
             if (fade > 0.0f)
                 y += fade * (line.readCubic (d2) - y);
-            y = lowCuts[static_cast<size_t> (c)].processSample (toneFilters[static_cast<size_t> (c)].processSample (y));
             if (tape)
-                y = std::tanh (y);
+                y = tapeBandwidth[static_cast<size_t> (c)].processSample (y);
+            y = lowCuts[static_cast<size_t> (c)].processSample (toneFilters[static_cast<size_t> (c)].processSample (y));
             repeat[static_cast<size_t> (c)] = y;
         }
 
@@ -167,7 +197,10 @@ void DelayPedal::process (float* const* channels, int numChannels, int numSample
         else
         {
             for (int c = 0; c < numChannels && c < 2; ++c)
-                lines[static_cast<size_t> (c)].write (s * channels[c][i] + fb * repeat[static_cast<size_t> (c)]);
+            {
+                const float rec = s * channels[c][i] + fb * repeat[static_cast<size_t> (c)];
+                lines[static_cast<size_t> (c)].write (tape ? std::tanh (recordDrive * rec) / recordDrive : rec);
+            }
         }
 
         for (int c = 0; c < numChannels && c < 2; ++c)

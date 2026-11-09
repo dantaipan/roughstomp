@@ -176,7 +176,7 @@ Shared building blocks first:
 Pedals (all stereo):
 - [x] **EQ** — 7-band graphic (octaves from 100 Hz, ±15 dB) plus level, on sliders with the real response curve drawn behind them (`fx/GraphicEq.h` is shared by the pedal and the GUI)
 - [x] **Chorus** — modulated 8–16 ms delay mixed with dry; 1–3 voices, stereo width
-- [x] **Delay** — digital, tape (darker, saturating, wow and flutter) and ping-pong; free or synced to the host tempo; tails ring out when bypassed
+- [x] **Delay** — digital, tape and ping-pong; free or synced to the host tempo; tails ring out when bypassed. Tape reworked 2026-11-08 as a speed-set tape echo: head bandwidth and wow/flutter/drift scale with the delay time (bright, steady slap-back; dark, wobbly long echoes), saturation on record, thinner repeats; Slapback factory preset
 - [x] **Reverb** — 8-line FDN with room, hall and plate voicings; pre-delay, tone; tails ring out when bypassed; every mode and size at the same loudness
 - [x] **Spring reverb** — rebuilt after a blind A/B on 2026-11-08: three springs summed mostly to mono, each a modulated delay loop through 100 stretched allpasses (the Välimäki–Parker–Abel model) with a 4.4 kHz cut-off, so echoes chirp and stay dark; dwell (drive), tone (output brightness) and decay
 - [x] **Tremolo** (sine/triangle/square, stereo spread up to auto-pan), **Vibrato**, **Flanger** (+-95% feedback), **Phaser** (4/8/12 stages, feedback)
@@ -206,7 +206,7 @@ Loose ends from earlier phases, done first:
 - [x] Family look with RoughTrack: `ui/include/rs_ui/Family.h` mirrors RoughTrack's console look (palette, regular-weight type, buttons, menus, console knobs, fader caps); the rig's chrome (header, the Input / Amp / Power amp / Cab / Output row and the Loop box, all one box style) and tuner (now RoughTrack's strobe) use it; only the pedals keep a hardware look
 - [x] RoughTrack uses `rs_ui/Family.h` directly (RoughStomp is public at github.com/dantaipan/roughstomp; RoughTrack fetches it at a pinned commit) — on RoughTrack's `family-look` branch, to merge
 
-- [x] More drives: Fuzz (vintage two-transistor style, with Bias for the gated sound), Big Fuzz (cascaded, sustaining, scooped tone), Clean Drive (transparent: clean side kept, treble) — shared 8x-oversampled `DrivePedal` base; levels fitted to sit with the Overdrive
+- [x] More drives: Fuzz (vintage two-transistor style, with Bias for the gated sound), Big Fuzz (cascaded, sustaining, scooped tone), Clean Drive (transparent: clean side kept, treble) — shared 8x-oversampled `DrivePedal` base; levels fitted to sit with the Overdrive. Blues Drive added 2026-11-08: two stages with diodes in the feedback (clean signal kept under the clipping, so it's touch-sensitive), full lows, active treble Tone; Blues factory preset
 - [x] Notarized download: `tools/make_release.sh` makes `dist/RoughStomp-<version>.dmg` with the standalone app and the VST3/AU (universal, Developer ID, hardened runtime, notarized and stapled); the app has its own icon (`tools/make-icon`) and starts with the input on
 - [ ] Stereo or dual-amp rigs
 - [ ] Optional (deferred): circuit-modelled stage (wave digital filters or nodal analysis) as a learning exercise

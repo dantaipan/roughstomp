@@ -49,6 +49,14 @@ const std::vector<FactoryPreset>& factoryPresets()
               { 0, "compressor", { { "sustain", 6.0f }, { "attack", 5.0f } } },
               { 1, "wah", { { "mode", 1.0f }, { "sensitivity", 6.0f }, { "position", 10.0f }, { "resonance", 6.0f } } } }, {
               { 0, "phaser", { { "rate", 0.4f }, { "depth", 50.0f }, { "mix", 35.0f } } } }, {} },
+        { "Blues", {
+              { 0, "bluesdrive", { { "gain", 5.0f }, { "tone", 5.5f } } } }, {
+              { 0, "reverb", { { "decay", 1.4f }, { "mix", 16.0f }, { "mode", 0.0f } } } },
+          { { "ampGain", 3.0f } } },
+        { "Slapback", {
+              { 0, "bluesdrive", { { "gain", 2.5f }, { "tone", 6.0f } } } }, {
+              { 0, "delay", { { "time", 110.0f }, { "feedback", 12.0f }, { "mix", 40.0f }, { "mode", 1.0f }, { "tone", 7000.0f } } },
+              { 1, "spring", { { "decay", 1.5f }, { "mix", 15.0f } } } }, {} },
         { "Empty Board", {}, {}, {} },
     };
     return presets;

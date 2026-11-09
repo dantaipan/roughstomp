@@ -103,13 +103,14 @@ TEST_CASE ("Loop pedals are registered and behave", "[looppedals]")
                               std::string_view ("tremolo"), std::string_view ("vibrato"),
                               std::string_view ("flanger"), std::string_view ("phaser"),
                               std::string_view ("spring"), std::string_view ("compressor"), std::string_view ("wah"),
-                              std::string_view ("fuzz"), std::string_view ("bigfuzz"), std::string_view ("cleandrive"));
+                              std::string_view ("fuzz"), std::string_view ("bigfuzz"), std::string_view ("cleandrive"),
+                              std::string_view ("bluesdrive"));
     CAPTURE (id);
     const int channels = GENERATE (1, 2);
     CAPTURE (channels);
 
     Rig rig (id, channels);
-    const bool oversampled = id == "fuzz" || id == "bigfuzz" || id == "cleandrive";
+    const bool oversampled = id == "fuzz" || id == "bigfuzz" || id == "cleandrive" || id == "bluesdrive";
     CHECK (rig.pedal->getLatencySamples() == (oversampled ? 42 : 0));
 
     // Loud noise at every setting's extreme stays finite and bounded
@@ -288,6 +289,35 @@ TEST_CASE ("Delay: echo timing, feedback and tempo sync", "[looppedals][delay]")
         CHECK (peak (y[1], 9600) > 0.02f);
         CHECK (peak (y[0], 9600) < 1e-4f);
     }
+}
+
+TEST_CASE ("Tape delay: short times are brighter, loud repeats compress", "[looppedals][delay]")
+{
+    // The repeats alone (output minus the dry input), at a frequency
+    auto wetDb = [] (float timeMs, double freq, double amplitude)
+    {
+        Rig rig ("delay", 1);
+        rig.set ("mode", 1.0f);
+        rig.set ("time", timeMs);
+        rig.set ("feedback", 0.0f);
+        rig.set ("mix", 100.0f);
+        rig.set ("tone", 12000.0f);
+        const auto x = test::sine (freq, fs, 48000, amplitude);
+        auto y = rig.run (x)[0];
+        for (size_t i = 0; i < y.size(); ++i)
+            y[i] -= x[i];
+        return test::toDb (test::amplitudeAt (y, freq, fs, 36000, 9600) / amplitude);
+    };
+
+    // A slap-back keeps much more of the top than a long echo
+    const double slap = wetDb (110.0f, 4000.0, 0.05) - wetDb (110.0f, 500.0, 0.05);
+    const double longEcho = wetDb (800.0f, 4000.0, 0.05) - wetDb (800.0f, 500.0, 0.05);
+    CHECK (slap > -6.0);
+    CHECK (slap > longEcho + 8.0);
+
+    // Quiet repeats come back at about the input's level; loud ones are squashed
+    CHECK (std::abs (wetDb (110.0f, 500.0, 0.05)) < 1.0);
+    CHECK (wetDb (110.0f, 500.0, 0.9) < wetDb (110.0f, 500.0, 0.05) - 2.0);
 }
 
 TEST_CASE ("Digital delay time changes don't click", "[looppedals][delay]")
@@ -645,7 +675,7 @@ TEST_CASE ("Synced modulation locks to the host's beat while playing", "[loopped
     CHECK (jerk (y, 2, y.size()) < 1e-4);
 }
 
-TEST_CASE ("Drives: fuzz gating, the big fuzz's scoop, the clean drive's clean side", "[looppedals][drives]")
+TEST_CASE ("Drives: fuzz gating, the big fuzz's scoop, the clean drive's clean side, the blues drive's touch", "[looppedals][drives]")
 {
     auto levelDb = [] (Rig& rig, double freq, double amplitude)
     {
@@ -692,9 +722,31 @@ TEST_CASE ("Drives: fuzz gating, the big fuzz's scoop, the clean drive's clean s
         CHECK (harmonics (10.0f) > harmonics (0.0f) + 10.0);
     }
 
+    SECTION ("Blues Drive: cleans up with softer playing, keeps its lows, Gain adds grit")
+    {
+        auto harmonics = [&] (float gainKnob, double amplitude)
+        {
+            Rig rig ("bluesdrive", 1);
+            rig.set ("gain", gainKnob);
+            rig.pedal->reset();
+            const auto y = rig.run (test::sine (200.0, fs, 24000 + 4800, amplitude));
+            const double f = test::amplitudeAt (y[0], 200.0, fs, 24000, 4800);
+            const double h = test::amplitudeAt (y[0], 400.0, fs, 24000, 4800) + test::amplitudeAt (y[0], 600.0, fs, 24000, 4800);
+            return test::toDb (h / f);
+        };
+        CHECK (harmonics (4.0f, 0.01) < harmonics (4.0f, 0.3) - 15.0);   // touch-sensitive
+        CHECK (harmonics (10.0f, 0.3) > harmonics (0.0f, 0.3) + 10.0);
+
+        Rig rig ("bluesdrive", 1);
+        const double low = levelDb (rig, 100.0, 0.0005), mid = levelDb (rig, 1000.0, 0.0005);
+        // Fuller lows than the mid-humped Overdrive
+        Rig od ("overdrive", 1);
+        CHECK (low - mid > levelDb (od, 100.0, 0.0005) - levelDb (od, 1000.0, 0.0005) + 5.0);
+    }
+
     SECTION ("Bypassed, a drive is the dry signal delayed by its latency")
     {
-        for (auto id : { "fuzz", "bigfuzz", "cleandrive" })
+        for (auto id : { "fuzz", "bigfuzz", "cleandrive", "bluesdrive" })
         {
             CAPTURE (id);
             Rig rig (id, 1);

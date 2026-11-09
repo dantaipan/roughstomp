@@ -3,6 +3,7 @@
 #include "fx/Waveshapers.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 
 namespace fx
@@ -330,6 +331,135 @@ void CleanDrivePedal::processOversampled (float* const* x, int numChannels, int 
             const float mixed = in + dm[k] * (d * 0.9f);
 
             s[i] = lv[k] * c.treble.processSample (c.dc.processSample (mixed));
+        }
+    }
+}
+
+//==============================================================================
+// Blues Drive
+
+const PedalInfo& BluesDrivePedal::staticInfo()
+{
+    static const PedalInfo i { "bluesdrive", "Blues Drive", {
+        { "gain",  "Gain",  0.0f, 10.0f, 4.0f },
+        { "tone",  "Tone",  0.0f, 10.0f, 5.0f },
+        { "level", "Level", -24.0f, 12.0f, 0.0f, "dB" },
+    } };
+    return i;
+}
+
+namespace
+{
+/** A diode pair in an op amp's feedback: soft, and a little asymmetric
+    (one side clips sooner), for some even harmonics. */
+float feedbackDiodes (float x, float knee) noexcept
+{
+    return x > 0.0f ? knee * std::tanh (x / knee) : 0.8f * knee * std::tanh (x / (0.8f * knee));
+}
+
+/** How much louder the drive is than it should be at gain 0..1 (dB),
+    measured at Gain 0, 2, .. 10; between those, a straight line. The aim is
+    the Overdrive's level at the default, rising about 4 dB across the knob. */
+float levelFit (float g) noexcept
+{
+    static constexpr std::array<float, 6> fit { -2.15f, 2.51f, 7.52f, 12.30f, 15.92f, 17.51f };
+    const float p = std::clamp (g, 0.0f, 1.0f) * 5.0f;
+    const auto i = std::min (static_cast<size_t> (p), fit.size() - 2);
+    return fit[i] + (p - static_cast<float> (i)) * (fit[i + 1] - fit[i]);
+}
+} // namespace
+
+void BluesDrivePedal::prepareDrive (double osRate, int maxOs, int numChannels)
+{
+    rate = osRate;
+    for (auto* s : { &gain1, &gain2, &levelGain })
+        s->prepare (osRate, 0.02);
+    toneDb.prepare (osRate, 0.03);
+    for (auto* v : { &g1, &g2, &lv })
+        v->assign (static_cast<size_t> (maxOs), 0.0f);
+    state.assign (static_cast<size_t> (numChannels), {});
+    for (auto& c : state)
+    {
+        c.input.setup (OnePole::Mode::highPass, osRate, 40.0);
+        // The gain legs: low corners, so the lows get driven too (full, not
+        // the mid-humped drive), but not so low that it farts out
+        c.leg1.setup (OnePole::Mode::highPass, osRate, 100.0);
+        c.leg2.setup (OnePole::Mode::highPass, osRate, 250.0);
+        c.top1.setup (OnePole::Mode::lowPass, osRate, 7000.0);   // feedback caps
+        c.top2.setup (OnePole::Mode::lowPass, osRate, 6000.0);
+        c.fizz.setCoefficients (BiquadCoeffs::lowPass (osRate, 6500.0, 0.6));
+        c.dc.setup (osRate, 15.0);
+    }
+    lastToneDb = 1000.0f;
+}
+
+void BluesDrivePedal::resetDrive() noexcept
+{
+    for (auto& c : state)
+    {
+        for (auto* f : { &c.input, &c.leg1, &c.leg2, &c.top1, &c.top2 })
+            f->reset();
+        c.tone.reset();
+        c.fizz.reset();
+        c.dc.reset();
+    }
+}
+
+void BluesDrivePedal::setTargets (bool jump) noexcept
+{
+    // One knob, two stages (a dual-gang pot): the first does most of the
+    // early breakup, the second comes in towards the top
+    const float g = value (gain) / 10.0f;
+    gain1.setTarget (dbToGain (2.0f + 28.0f * g));
+    gain2.setTarget (dbToGain (16.0f * g * g));
+    // Fitted (rs-render, a guitar take) so the default sits with the
+    // Overdrive and the Gain knob stays roughly even
+    levelGain.setTarget (dbToGain (value (level) - levelFit (g)));
+    toneDb.setTarget (-9.0f + 1.8f * value (tone));   // -9 .. +9 dB
+    if (jump)
+    {
+        for (auto* s : { &gain1, &gain2, &levelGain })
+            s->reset (s->getTarget());
+        toneDb.reset (toneDb.getTarget());
+    }
+}
+
+void BluesDrivePedal::processOversampled (float* const* x, int numChannels, int n) noexcept
+{
+    fill (gain1, g1.data(), n);
+    fill (gain2, g2.data(), n);
+    fill (levelGain, lv.data(), n);
+
+    // Tone: a treble shelf, updated per block (its smoother is slow)
+    for (int i = 0; i < n; ++i)
+        toneDb.next();
+    if (std::abs (toneDb.getCurrent() - lastToneDb) > 0.01f)
+    {
+        lastToneDb = toneDb.getCurrent();
+        const auto k = BiquadCoeffs::highShelf (rate, 1200.0, 0.6, lastToneDb);
+        for (auto& c : state)
+            c.tone.setCoefficients (k);
+    }
+
+    for (int ch = 0; ch < numChannels; ++ch)
+    {
+        auto& c = state[static_cast<size_t> (ch)];
+        float* s = x[ch];
+        for (int i = 0; i < n; ++i)
+        {
+            const auto k = static_cast<size_t> (i);
+            const float v = c.input.processSample (s[i]);
+
+            // Stage 1: the clean signal plus a clipped, amplified part
+            float y = v + feedbackDiodes ((g1[k] - 1.0f) * c.leg1.processSample (v), 0.35f);
+            y = c.top1.processSample (y);
+            y = 0.7f * std::tanh (y / 0.7f);   // diodes to ground between the stages
+
+            // Stage 2, the same way
+            y = y + feedbackDiodes ((g2[k] - 1.0f) * c.leg2.processSample (y), 0.5f);
+            y = c.top2.processSample (y);
+
+            s[i] = lv[k] * c.dc.processSample (c.fizz.processSample (c.tone.processSample (y)));
         }
     }
 }
