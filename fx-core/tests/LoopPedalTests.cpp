@@ -563,15 +563,16 @@ TEST_CASE ("Modulation pedals don't click when knobs jump", "[looppedals]")
     }
 }
 
-TEST_CASE ("Spring: chirps, decays, and is stereo", "[looppedals][spring]")
+TEST_CASE ("Spring: chirps, decays, and is mostly mono", "[looppedals][spring]")
 {
     Rig rig ("spring", 2);
     rig.set ("mix", 100.0f);
     rig.set ("decay", 2.0f);
     const auto y = rig.run (impulse (3 * 48000));
 
-    // Within the first trip round the spring, low frequencies arrive after
-    // high ones: compare when each band's energy is centred
+    // The chirp (as in the published spring model): within the first trip
+    // round the springs, higher frequencies arrive later, up to the cut-off.
+    // Compare when each band's energy is centred
     auto centre = [&] (fx::BiquadCoeffs k)
     {
         fx::Biquad f;
@@ -587,14 +588,14 @@ TEST_CASE ("Spring: chirps, decays, and is stereo", "[looppedals][spring]")
     };
     const double low = centre (fx::BiquadCoeffs::bandPass (fs, 400.0, 2.0));
     const double high = centre (fx::BiquadCoeffs::bandPass (fs, 3000.0, 2.0));
-    CHECK (low > high + 0.002 * fs);   // at least 2 ms later
+    CHECK (high > low + 0.002 * fs);   // at least 2 ms later
 
     // Decays: quieter after 2 s by roughly the 60 dB the decay promises
     const double early = rmsDb (y[0], 4800, 9600), late = rmsDb (y[0], 2 * 48000, 2 * 48000 + 4800);
     CHECK (early - late > 40.0);
     CHECK (early - late < 80.0);
 
-    // The two springs differ
+    // A tank is mono: the sides are mostly the same, with a little width
     double dot = 0.0, l2 = 0.0, r2 = 0.0;
     for (size_t i = 1; i < 48000; ++i)
     {
@@ -602,7 +603,9 @@ TEST_CASE ("Spring: chirps, decays, and is stereo", "[looppedals][spring]")
         l2 += static_cast<double> (y[0][i]) * y[0][i];
         r2 += static_cast<double> (y[1][i]) * y[1][i];
     }
-    CHECK (std::abs (dot) / std::sqrt (l2 * r2) < 0.5);
+    const double correlation = dot / std::sqrt (l2 * r2);
+    CHECK (correlation > 0.5);
+    CHECK (correlation < 0.95);
 }
 
 TEST_CASE ("Synced modulation locks to the host's beat while playing", "[looppedals][tremolo]")

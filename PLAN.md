@@ -178,7 +178,7 @@ Pedals (all stereo):
 - [x] **Chorus** — modulated 8–16 ms delay mixed with dry; 1–3 voices, stereo width
 - [x] **Delay** — digital, tape (darker, saturating, wow and flutter) and ping-pong; free or synced to the host tempo; tails ring out when bypassed
 - [x] **Reverb** — 8-line FDN with room, hall and plate voicings; pre-delay, tone; tails ring out when bypassed; every mode and size at the same loudness
-- [x] **Spring reverb** — two springs (one per side): delay loops through 100 dispersive allpasses for the chirp, with dwell (drive), tone and decay
+- [x] **Spring reverb** — rebuilt after a blind A/B on 2026-11-08: three springs summed mostly to mono, each a modulated delay loop through 100 stretched allpasses (the Välimäki–Parker–Abel model) with a 4.4 kHz cut-off, so echoes chirp and stay dark; dwell (drive), tone (output brightness) and decay
 - [x] **Tremolo** (sine/triangle/square, stereo spread up to auto-pan), **Vibrato**, **Flanger** (+-95% feedback), **Phaser** (4/8/12 stages, feedback)
 - [x] Tests: no clicks when rate/depth change, tempo sync accuracy, interpolation quality (no zipper or HF loss)
 

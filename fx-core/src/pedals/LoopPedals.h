@@ -280,10 +280,13 @@ private:
     std::vector<float> lastOut;
 };
 
-/** Spring reverb: per side, a delay loop through a long chain of dispersive
-    allpasses (low frequencies travel slower: the "boing" and drip), damped
-    and fed back. Dwell drives the springs harder. Tails ring out when
-    bypassed. */
+/** Spring reverb, after Valimaki, Parker and Abel's parametric spring model:
+    three springs of different lengths, each a loop of a stretched-allpass
+    chain (the chirp: higher frequencies arrive later, up to the spring's
+    cut-off near 4.4 kHz), a steep low-pass at that cut-off, gentle damping,
+    and a delay whose length wanders a little at random (no metallic flutter).
+    Summed mostly to mono, as a tank is. Dwell drives the springs harder;
+    Tone is the brightness of what comes out. Tails ring out when bypassed. */
 class SpringPedal final : public BasicPedal
 {
 public:
@@ -297,21 +300,29 @@ public:
     void process (float* const* channels, int numChannels, int numSamples) override;
 
 private:
+    static constexpr int numSprings = 3;
     static constexpr int numStages = 100;
 
     struct Spring
     {
         DelayLine line;
-        int length = 1;
-        std::array<float, numStages> allpass {};
+        float length = 1.0f;              // samples, before the wander
+        float dispersion = 0.75f;         // the allpasses' coefficient
+        std::vector<float> chirpIn, chirpOut;   // numStages x stretch: each stage's last inputs and outputs
+        std::array<Biquad, 2> cutOff;     // 4th-order low-pass at the spring's cut-off
         OnePole damping, lowCut;
+        Lfo wander;
         float last = 0.0f;
     };
 
     double sampleRate = 48000.0;
     bool primed = false;
-    std::array<Spring, 2> springs;
+    int stretch = 5;      // samples per allpass delay: puts the dispersion below the cut-off
+    int chirpPos = 0;     // shared ring position in every stage's history
+    float wanderDepth = 8.0f;
+    std::array<Spring, numSprings> springs;
     OnePole inputLowCut;
+    std::array<OnePole, 2> brightness;   // Tone, per output side
     LinearSmoother send { 1.0f }, wetGain { 0.3f }, drive { 1.0f };
 };
 

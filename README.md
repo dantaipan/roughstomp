@@ -22,7 +22,7 @@ Plugins (VST3, AU and a standalone app each):
   - *Tremolo*: sine, triangle or square; *Spread* pans it across the sides (100% = auto-pan)
   - *Vibrato*, *Flanger*, *Phaser*
   - *Delay*: digital, tape or ping-pong
-  - *Reverb*: room, hall or plate; *Spring*: two springs with dwell
+  - *Reverb*: room, hall or plate; *Spring*: three springs with dwell
   - *Compressor*: sustain, attack, level, blend (parallel compression)
   - *Wah*: *Position* is the pedal (map an expression pedal or automation to it in your host), or *Auto* for an envelope filter
 
