@@ -38,7 +38,6 @@ if(ROUGHSTOMP_BUILD_TOOLS)
     add_subdirectory(tools/render)
     add_subdirectory(tools/host-render)
     add_subdirectory(tools/rig-snapshot)
-    add_subdirectory(tools/make-icon)
     add_subdirectory(tools/t3k)
 endif()
 
