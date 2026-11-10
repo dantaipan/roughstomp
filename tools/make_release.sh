@@ -53,7 +53,7 @@ for bundle in "$app" "$vst3" "$au"; do
         echo "$bundle exports $weak weak symbols: it would clash with RoughTrack's NAM" >&2
         exit 1
     fi
-    if ! strings "$binary" | grep -q "t3k_pub_"; then
+    if ! strings "$binary" | grep "t3k_pub_" >/dev/null; then   # not -q: with pipefail, strings would fail when grep stops early
         echo "$bundle was built without the TONE3000 client ID" >&2
         exit 1
     fi
