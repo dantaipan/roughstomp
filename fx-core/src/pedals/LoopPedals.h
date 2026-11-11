@@ -390,6 +390,79 @@ private:
     std::vector<State> states;   // per channel
 };
 
+/** Octave: up to three octaves blended with the dry signal. Both modes start
+    from the same analysis: the signal split into narrow bands, each band's
+    level tilted towards the lows (a guitar's low notes have weak
+    fundamentals under loud harmonics), and the bands that are notes'
+    fundamentals, rather than harmonics of a lower note, picked out.
+    Poly shifts every fundamental, so chords shift as chords; Vintage drives
+    an analog-style divider from the lowest one (one note at a time, a square
+    sub shaped by the note's envelope). Range (Poly) keeps the octave-down to
+    notes below it; Tone voices the octaves down from a round, bass-like
+    octave to the full shifted spectrum. No latency. */
+class OctavePedal final : public BasicPedal
+{
+public:
+    enum Index { direct, sub1, sub2, up, range, mode, tone };
+    enum class Mode { vintage, poly };
+    static const PedalInfo& staticInfo();
+
+    OctavePedal() : BasicPedal (staticInfo()) {}
+
+    void prepare (double sampleRate, int maxBlockSize, int numChannels) override;
+    void reset() override;
+    void process (float* const* channels, int numChannels, int numSamples) override;
+
+    static constexpr int numBands = 22;   // quarter octaves from 55 Hz
+
+private:
+    struct Voices { float sub1 = 0.0f, sub2 = 0.0f, up = 0.0f; };
+
+    /** One channel's state. */
+    struct Channel
+    {
+        // The bands: two complex one-poles each (state), their square roots
+        // (kept continuous), and their rotation per sample (smoothed)
+        std::array<double, numBands> re {}, im {}, re1 {}, im1 {}, turnRe {}, turnIm {};
+        std::array<float, numBands> w1r {}, w1i {}, w2r {}, w2i {};
+        Biquad polyUpLowPass;
+        Biquad subTone;    // the octaves down: Tone (a low-pass)...
+        Biquad subShelf;   // ...and a low boost, as the ear needs down there
+
+        // Vintage: the analog divider. A steep tracking filter (so the
+        // fundamental, not the louder harmonics, makes the zero crossings),
+        // its envelope for the trigger, two flip-flops, the low end's
+        // envelope for the subs' level, smoothing, and the rectifier octave-up
+        OnePole trackHighPass, envHighPass, envLowPass, upInput, upHighPass, upSmooth;
+        Biquad track1, track2, sub1Smooth, sub2Smooth;
+        DcBlocker upDc;
+        float trackEnvelope = 0.0f, envelope = 0.0f;
+        // A 90-degree phase splitter (two all-pass chains), for a smooth,
+        // fast envelope of the whole guitar: no ripple at the note's pitch
+        std::array<float, 4> hx1 {}, hx2 {}, hy1 {}, hy2 {}, gx1 {}, gx2 {}, gy1 {}, gy2 {};
+        float gDelay = 0.0f;
+        bool armed = false, ff1 = false, ff2 = false;
+
+        void reset() noexcept;
+    };
+
+    /** One sample through each mode. */
+    Voices runPoly (Channel&, float x) noexcept;
+    Voices runVintage (Channel&, float x) noexcept;
+
+    double sampleRate = 48000.0;
+    bool primed = false;
+    float envAttack = 0.0f, envRelease = 0.0f, trackRelease = 0.0f, subRelease = 0.0f;
+    double turnSmoothing = 0.01;
+    std::array<double, numBands> poleRe {}, poleIm {}, inputScale {};
+    std::array<float, numBands> tilt {}, rangeWeight {};
+    float weightedRange = -1.0f;
+    OnePoleSmoother toneHz { 500.0f };
+    float lastToneHz = -1.0f;
+    std::vector<Channel> channels;
+    LinearSmoother directGain { 1.0f }, sub1Gain { 0.6f }, sub2Gain { 0.0f }, upGain { 0.0f }, polyAmount { 1.0f };
+};
+
 /** Shared by the drive pedals: 8x oversampling around the nonlinear part
     (as the Overdrive), chunking to the prepared block size, and bypass as a
     crossfade with the dry signal taken through the same oversampler, so the

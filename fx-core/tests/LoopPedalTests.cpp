@@ -104,7 +104,7 @@ TEST_CASE ("Loop pedals are registered and behave", "[looppedals]")
                               std::string_view ("flanger"), std::string_view ("phaser"),
                               std::string_view ("spring"), std::string_view ("compressor"), std::string_view ("wah"),
                               std::string_view ("fuzz"), std::string_view ("bigfuzz"), std::string_view ("cleandrive"),
-                              std::string_view ("bluesdrive"));
+                              std::string_view ("bluesdrive"), std::string_view ("octave"));
     CAPTURE (id);
     const int channels = GENERATE (1, 2);
     CAPTURE (channels);
@@ -758,6 +758,84 @@ TEST_CASE ("Drives: fuzz gating, the big fuzz's scoop, the clean drive's clean s
             for (size_t i = 12000; i < y.size(); ++i)
                 worst = std::max (worst, std::abs (static_cast<double> (y[i]) - x[i - static_cast<size_t> (latency)]));
             CHECK (test::toDb (worst) < -40.0);
+        }
+    }
+}
+
+TEST_CASE ("Octave: the right octaves in each mode, polyphony, Range, and a clean bypass", "[looppedals][octave]")
+{
+    // One voice at a time (Direct off), a note in, the level at a frequency out
+    auto levelDb = [] (Rig& rig, const std::vector<float>& x, double freq)
+    {
+        rig.pedal->reset();
+        const auto y = rig.run (x)[0];
+        return test::toDb (test::amplitudeAt (y, freq, fs, 24000, 19200));
+    };
+    auto voice = [] (float mode, const char* which)
+    {
+        auto rig = std::make_unique<Rig> ("octave", 1);
+        rig->set ("mode", mode);
+        rig->set ("direct", 0.0f);
+        rig->set ("sub1", 0.0f);
+        rig->set (which, 100.0f);
+        return rig;
+    };
+    const auto note = test::sine (220.0, fs, 48000, 0.3);
+
+    SECTION ("Vintage: an octave and two below, and one above, with no fundamental")
+    {
+        auto down = voice (0.0f, "sub1");
+        CHECK (levelDb (*down, note, 110.0) > levelDb (*down, note, 220.0) + 20.0);
+        auto down2 = voice (0.0f, "sub2");
+        CHECK (levelDb (*down2, note, 55.0) > levelDb (*down2, note, 220.0) + 15.0);
+        auto upOne = voice (0.0f, "up");
+        CHECK (levelDb (*upOne, note, 440.0) > levelDb (*upOne, note, 220.0) + 20.0);
+    }
+
+    SECTION ("Vintage: below the gate the divider doesn't run")
+    {
+        auto down = voice (0.0f, "sub1");
+        CHECK (levelDb (*down, test::sine (220.0, fs, 48000, 0.0003), 110.0) < -90.0);
+    }
+
+    SECTION ("Poly: a chord's notes each get their octave")
+    {
+        auto chord = test::sine (196.0, fs, 48000, 0.2);
+        const auto fifth = test::sine (294.0, fs, 48000, 0.2);
+        for (size_t i = 0; i < chord.size(); ++i)
+            chord[i] += fifth[i];
+
+        auto down = voice (1.0f, "sub1");
+        const double between = levelDb (*down, chord, 122.5);
+        CHECK (levelDb (*down, chord, 98.0) > between + 12.0);
+        CHECK (levelDb (*down, chord, 147.0) > between + 12.0);
+
+        auto upOne = voice (1.0f, "up");
+        CHECK (levelDb (*upOne, note, 440.0) > levelDb (*upOne, note, 220.0) + 20.0);
+    }
+
+    SECTION ("Poly: Range keeps the octave down to the notes below it")
+    {
+        auto down = voice (1.0f, "sub1");
+        const auto high = test::sine (600.0, fs, 48000, 0.3), low = test::sine (150.0, fs, 48000, 0.3);
+        const double highAll = levelDb (*down, high, 300.0), lowAll = levelDb (*down, low, 75.0);
+        down->set ("range", 300.0f);
+        CHECK (levelDb (*down, high, 300.0) < highAll - 20.0);
+        CHECK (levelDb (*down, low, 75.0) > lowAll - 3.0);   // the upper bands' skirts add a little to low notes too
+    }
+
+    SECTION ("Bypassed, it's the dry signal")
+    {
+        for (float mode : { 0.0f, 1.0f })
+        {
+            Rig rig ("octave", 1);
+            rig.set ("mode", mode);
+            rig.set ("up", 50.0f);
+            rig.pedal->setBypassed (true);
+            const auto x = test::sine (330.0, fs, 24000, 0.5);
+            const auto y = rig.run (x)[0];
+            for (size_t i = 4800; i < y.size(); ++i)
+                REQUIRE (y[i] == x[i]);
         }
     }
 }

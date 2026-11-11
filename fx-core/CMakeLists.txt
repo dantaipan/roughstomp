@@ -10,6 +10,7 @@ add_library(fx-core STATIC
     src/pedals/Dynamics.cpp
     src/pedals/Eq.cpp
     src/pedals/Modulation.cpp
+    src/pedals/Octave.cpp
     src/pedals/Reverb.cpp
     src/pedals/Spring.cpp
     src/pedals/Wah.cpp

@@ -183,7 +183,7 @@ constexpr std::array entries { entry<OverdrivePedal>(), entry<BoostPedal>(),
                                entry<EqPedal>(), entry<ChorusPedal>(), entry<DelayPedal>(), entry<ReverbPedal>(),
                                entry<TremoloPedal>(), entry<VibratoPedal>(), entry<FlangerPedal>(), entry<PhaserPedal>(),
                                entry<SpringPedal>(), entry<CompressorPedal>(), entry<WahPedal>(),
-                               entry<FuzzPedal>(), entry<BigFuzzPedal>(), entry<CleanDrivePedal>(), entry<BluesDrivePedal>() };
+                               entry<FuzzPedal>(), entry<BigFuzzPedal>(), entry<CleanDrivePedal>(), entry<BluesDrivePedal>(), entry<OctavePedal>() };
 } // namespace
 
 namespace registry

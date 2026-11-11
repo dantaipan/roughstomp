@@ -17,6 +17,7 @@ Plugins (VST3, AU and a standalone app each):
 - **Pedals:** pick a pedal from the menu above a slot. Footswitch = on/off. Six slots before the amp, six in the FX loop. Any pedal goes in any slot:
   - *Overdrive*, *Boost*: for in front of the amp
   - *Fuzz* (lower *Bias* for a gated, sputtering sound), *Big Fuzz* (long sustain, scooped tone), *Clean Drive* (keeps the guitar's own sound; *Gain* brings in more grit), *Blues Drive* (touch-sensitive and amp-like, with full lows; cleans up as you play softer)
+  - *Octave*: up to three octaves (*Oct -1*, *Oct -2*, *Oct Up*) blended with *Direct*. *Vintage* is an analog-style divider: one note at a time, a solid square-wave sub, at its best on the low strings (chords and fast lines high up the neck confuse it, as they did the originals); *Poly* shifts everything, chords and fast lines included. *Tone* voices the octaves down, from a round, bass-like octave (down) to the whole shifted sound (up). In Poly, *Range* keeps the octave-down to notes below it (turn it down so only the low strings get it)
   - *EQ*: 7-band graphic EQ (100 Hz to 6.4 kHz, ±15 dB) and level, on sliders
   - *Chorus*: 1–3 voices, stereo width
   - *Tremolo*: sine, triangle or square; *Spread* pans it across the sides (100% = auto-pan)
@@ -139,7 +140,7 @@ $H $P di.wav out.wav Rig.loop1=overdrive loopMix=50 pre1_on=0 input=3
 attribute (`ampFile`, `powerFile`, `cabFile`, `pre1`..`pre6`, `loop1`..`loop6`
 with pedal ids like `overdrive`, `boost`, `eq`, `chorus`, `delay`, `reverb`,
 `tremolo`, `vibrato`, `flanger`, `phaser`, `spring`, `compressor`, `wah`,
-`fuzz`, `bigfuzz`, `cleandrive`, `bluesdrive`).
+`fuzz`, `bigfuzz`, `cleandrive`, `bluesdrive`, `octave`).
 Slot knobs are `pre1_k1`.. and run 0..1 across the pedal's range (log for
 frequencies and times). A pedal set this way keeps the knobs' values rather
 than its own defaults, so set every knob you care about. Prints latency, peak and RMS.
