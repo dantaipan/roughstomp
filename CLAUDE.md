@@ -52,7 +52,12 @@ commit and push here, then bump the pin in RoughTrack and check its
   terms: download only what the user asks for, show "Powered by TONE3000",
   the full logo before the T3K mark. `rs-t3k` tries the API from the command
   line; `rs-rig-snapshot --tone3000=amp[:trending|:<toneId>] --wait=6`
-  pictures the browser
+  pictures the browser (`pre2`, `loop1`... for a capture slot)
+- Pedal slots can hold a NAM capture (`plugins/Rig/Source/CapturePedal`, id
+  `nam`, not in fx-core's registry); `Rig.pre1=nam Rig.pre1File=...` sets one
+  up in `rs-host-render`/`rs-rig-snapshot`. The slider view is a global
+  preference (`ViewSettings`); `rs-rig-snapshot --view=sliders` pictures it
+  without changing the saved preference
 - Branding is "RoughStomp" (manufacturer code Rstm, bundle IDs com.roughstomp.*)
 - fx-core and the NAM library are built with hidden symbols so the plugin can
   load inside RoughTrack, which has its own copy of NAM; keep it that way

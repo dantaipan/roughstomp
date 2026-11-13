@@ -175,6 +175,16 @@ RigEditor::RigEditor (RigProcessor& p)
         loopSlots[static_cast<size_t> (i)] = std::make_unique<SlotView> (p, rig::Section::loop, i);
         board.addAndMakeVisible (*preSlots[static_cast<size_t> (i)]);
         board.addAndMakeVisible (*loopSlots[static_cast<size_t> (i)]);
+
+        // NAM captures in pedal slots: a file, TONE3000, or clear
+        for (auto [s, view] : { std::pair { rig::Section::pre, preSlots[static_cast<size_t> (i)].get() },
+                                std::pair { rig::Section::loop, loopSlots[static_cast<size_t> (i)].get() } })
+        {
+            view->onLoadCapture = [this, s, i] { chooseSlotCapture (s, i); };
+            view->onClearCapture = [this, s, i] { rigProcessor.clearSlotCapture (s, i); };
+            view->onBrowseCapture = [this, s, i] { openTone3000 (rig::FileSlot::pedal (s, i), false); };
+            view->onShowCaptureTone = [this, s, i] { openTone3000 (rig::FileSlot::pedal (s, i), true); };
+        }
     }
 
     // Panels first: the amp's knobs sit on top of its panel
@@ -200,6 +210,22 @@ RigEditor::RigEditor (RigProcessor& p)
     board.addAndMakeVisible (presetBar);
     board.addChildComponent (tuner);
     tuner.setVisible (tunerButton.getToggleState());
+
+    // Pedals or sliders: one preference for every RoughStomp
+    for (auto* b : { &pedalsViewButton, &slidersViewButton })
+    {
+        b->setClickingTogglesState (false);
+        b->setColour (juce::TextButton::buttonOnColourId, fam::amber.withAlpha (0.45f));
+        board.addAndMakeVisible (*b);
+    }
+    pedalsViewButton.setConnectedEdges (juce::Button::ConnectedOnRight);
+    slidersViewButton.setConnectedEdges (juce::Button::ConnectedOnLeft);
+    pedalsViewButton.setTooltip ("Show the pedals as hardware");
+    slidersViewButton.setTooltip ("Show the pedals as plain sliders");
+    pedalsViewButton.setToggleState (viewSettings->getStyle() == ViewSettings::Style::pedals, juce::dontSendNotification);
+    slidersViewButton.setToggleState (viewSettings->getStyle() == ViewSettings::Style::sliders, juce::dontSendNotification);
+    pedalsViewButton.onClick = [this] { viewSettings->setStyle (ViewSettings::Style::pedals); };
+    slidersViewButton.onClick = [this] { viewSettings->setStyle (ViewSettings::Style::sliders); };
 
     ampPanel.onLoad    = [this] { chooseAmp (rig::AmpStage::amp); };
     ampPanel.onClear   = [this] { rigProcessor.clearAmp (rig::AmpStage::amp); refreshPanels(); };
@@ -255,6 +281,9 @@ void RigEditor::timerCallback()
         tuner.update (rigProcessor.readTuner(), seconds);
     if (++ticks % 10 == 0)
         presetBar.refresh();
+    const bool slidersOn = viewSettings->getStyle() == ViewSettings::Style::sliders;
+    pedalsViewButton.setToggleState (! slidersOn, juce::dontSendNotification);
+    slidersViewButton.setToggleState (slidersOn, juce::dontSendNotification);
 
     for (auto& s : preSlots)  s->refresh();
     for (auto& s : loopSlots) s->refresh();
@@ -319,6 +348,28 @@ void RigEditor::openTone3000 (rig::FileSlot s, bool atItsTone)
         tone3000Browser->openTone (s, source.toneId);
     else
         tone3000Browser->openFor (s);
+}
+
+void RigEditor::chooseSlotCapture (rig::Section s, int i)
+{
+    chooser = std::make_unique<juce::FileChooser> ("Choose a NAM capture", lastFolder, "*.nam");
+    chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+                          [this, s, i] (const juce::FileChooser& fc)
+                          {
+                              const auto file = fc.getResult();
+                              if (file == juce::File())
+                                  return;
+                              lastFolder = file.getParentDirectory();
+                              juce::Component::SafePointer<RigEditor> safe (this);
+                              rigProcessor.loadSlotCapture (s, i, file, [safe, file, s, i] (const juce::String& error)
+                              {
+                                  if (error.isEmpty() && safe != nullptr)
+                                      safe->rigProcessor.forgetTone3000Source (rig::FileSlot::pedal (s, i));   // a local file now
+                                  if (error.isNotEmpty())
+                                      juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon,
+                                                                              "Couldn't load " + file.getFileName(), error);
+                              });
+                          });
 }
 
 void RigEditor::chooseCabinet()
@@ -405,6 +456,10 @@ void RigEditor::layoutBoard()
         // Everything in the header shares its centre line
         auto header = b.removeFromTop (headerHeight).reduced (margin, 0);
         tunerButton.setBounds (header.removeFromRight (90).withSizeKeepingCentre (90, headerControlHeight));
+        header.removeFromRight (12);
+        auto viewArea = header.removeFromRight (150).withSizeKeepingCentre (150, headerControlHeight);
+        pedalsViewButton.setBounds (viewArea.removeFromLeft (75));
+        slidersViewButton.setBounds (viewArea);
         presetBar.setBounds (header.withSizeKeepingCentre (420, headerControlHeight));
     }
     b = b.reduced (margin, 0).withTrimmedBottom (margin);

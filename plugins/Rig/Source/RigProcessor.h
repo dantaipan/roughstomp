@@ -14,7 +14,9 @@
 
 #include <array>
 #include <atomic>
+#include <map>
 #include <mutex>
+#include <optional>
 
 class PresetManager;
 namespace rs::t3k { class Service; }
@@ -29,10 +31,32 @@ constexpr int knobsPerSlot    = 8;
 /** Amps run before the loop, the power amp after it. */
 enum class AmpStage { amp, power };
 
-/** The slots that load a file: the two amps and the cab. */
-enum class FileSlot { amp, power, cab };
+/** Where a file goes: the two amps, the cab, or a pedal slot holding a NAM
+    capture. */
+struct FileSlot
+{
+    enum class Kind { amp, power, cab, pedal };
+    Kind kind = Kind::amp;
+    Section section = Section::pre;   // for pedal slots
+    int index = 0;
+
+    static const FileSlot amp, power, cab;
+    static FileSlot pedal (Section s, int i) noexcept { return { Kind::pedal, s, i }; }
+
+    bool isPedal() const noexcept { return kind == Kind::pedal; }
+    bool operator== (const FileSlot& o) const noexcept
+    {
+        return kind == o.kind && (kind != Kind::pedal || (section == o.section && index == o.index));
+    }
+    bool operator!= (const FileSlot& o) const noexcept { return ! (*this == o); }
+};
+inline constexpr FileSlot FileSlot::amp   { FileSlot::Kind::amp,   Section::pre, 0 };
+inline constexpr FileSlot FileSlot::power { FileSlot::Kind::power, Section::pre, 0 };
+inline constexpr FileSlot FileSlot::cab   { FileSlot::Kind::cab,   Section::pre, 0 };
+
 inline FileSlot fileSlot (AmpStage s) noexcept { return s == AmpStage::amp ? FileSlot::amp : FileSlot::power; }
-juce::String fileSlotKey (FileSlot);   // "amp", "power", "cab"
+juce::String fileSlotKey (FileSlot);                       // "amp", "power", "cab", "pre3", "loop1"...
+std::optional<FileSlot> fileSlotFromKey (const juce::String&);
 
 /** Where a slot's file came from when it's a TONE3000 download: what to show
     for it, and what to download again if the file has gone. */
@@ -187,6 +211,18 @@ public:
     juce::File getCabinetFile() const;
     juce::String getCabinetProblem() const;
 
+    // NAM captures in pedal slots (message thread) -------------------------------
+
+    /** Loads a capture into a slot holding the "NAM Capture" pedal: in the
+        background, unless now (restoring a session for an offline bounce).
+        done gets an error, or empty on success. */
+    void loadSlotCapture (rig::Section, int slot, const juce::File&,
+                          std::function<void (const juce::String&)> done = {}, bool now = false);
+    void clearSlotCapture (rig::Section, int slot);
+    /** The slot's capture (or the one loading), and any problem ("Loading..." while it loads). */
+    juce::File getSlotCaptureFile (rig::Section, int slot) const;
+    juce::String getSlotCaptureProblem (rig::Section, int slot) const;
+
     // TONE3000 (message thread) ------------------------------------------------
 
     /** Downloads the model (unless it already has) and loads it into the
@@ -214,6 +250,11 @@ private:
         std::atomic<const fx::PedalInfo*> info { nullptr };
         std::atomic<float>* on = nullptr;
         std::array<std::atomic<float>*, rig::knobsPerSlot> knobs {};
+
+        // A NAM capture pedal's file (messageLock)
+        juce::File captureFile, captureLoading;
+        juce::String captureProblem;
+        int captureGeneration = 0;   // bumped by every load, clear or pedal change: stale loads are dropped
     };
 
     /** One model per channel it runs on: 1 for the amp, 2 for the power amp. */
@@ -244,6 +285,7 @@ private:
 
     static constexpr size_t index (rig::Section s) noexcept { return static_cast<size_t> (s); }
     Slot& slot (rig::Section s, int i) noexcept { return slots[index (s)][static_cast<size_t> (i)]; }
+    const Slot& slot (rig::Section s, int i) const noexcept { return slots[index (s)][static_cast<size_t> (i)]; }
     AmpState& amp (rig::AmpStage s) noexcept { return s == rig::AmpStage::amp ? mainAmp : powerAmp; }
     const AmpState& amp (rig::AmpStage s) const noexcept { return s == rig::AmpStage::amp ? mainAmp : powerAmp; }
     fx::Chain& chain (rig::Section s) noexcept { return s == rig::Section::pre ? preChain : loopChain; }
@@ -278,7 +320,12 @@ private:
     double cabinetRate = 0.0;                 // the rate it was last handed to `cabinet` at
     float cabinetGain = 4.0f;                 // audio thread; set in prepareToPlay
 
-    std::array<rig::Tone3000Source, 3> tone3000Sources;   // by FileSlot; messageLock
+    std::map<juce::String, rig::Tone3000Source> tone3000Sources;   // by fileSlotKey; messageLock
+    int loopChannels = 2;
+
+    /** The file a slot holds, and loading one into it (any kind of slot). */
+    juce::File fileOf (rig::FileSlot) const;
+    void loadFileInto (rig::FileSlot, const juce::File&, bool showNewNow, std::function<void (const juce::String&)> done);
     std::unique_ptr<juce::SharedResourcePointer<rs::t3k::Service>> tone3000Service;
 
     /** The slot's TONE3000 file is missing: download it again (or say why

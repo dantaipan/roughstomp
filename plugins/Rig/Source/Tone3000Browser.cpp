@@ -14,6 +14,8 @@ constexpr int headerHeight = 44;
 
 juce::String slotName (rig::FileSlot s)
 {
+    if (s.isPedal())
+        return (s.section == rig::Section::pre ? "pre-amp slot " : "FX loop slot ") + juce::String (s.index + 1);
     return s == rig::FileSlot::amp ? "Amp" : s == rig::FileSlot::power ? "Power amp" : "Cab";
 }
 
@@ -318,14 +320,22 @@ public:
         styleLabel (message, 14.0f, fam::dimText);
         message.setJustificationType (juce::Justification::centred);
         addChildComponent (message);
+
+        // For a pedal slot: pedal captures first, everything with a click
+        pedalsOnly.setTooltip ("Only captures of pedals");
+        pedalsOnly.onClick = [this] { showList (which.isEmpty() ? "favorited" : which); };
+        addChildComponent (pedalsOnly);
     }
 
     std::function<void (const Tone&)> onTone;
     std::function<void()> onBrowse;
 
-    void setFormat (const juce::String& f)
+    /** What the slot loads; forPedalSlot offers (and starts with) pedal captures only. */
+    void setFormat (const juce::String& f, bool forPedalSlot)
     {
         format = f;
+        pedalsOnly.setVisible (forPedalSlot);
+        pedalsOnly.setToggleState (forPedalSlot, juce::dontSendNotification);
         showList (which.isEmpty() ? "favorited" : which);
     }
 
@@ -336,6 +346,7 @@ public:
     {
         auto b = getLocalBounds();
         auto row = b.removeFromTop (30);
+        pedalsOnly.setBounds (row.removeFromRight (130));
         for (auto* t : tabs)
         {
             t->setBounds (row.removeFromLeft (110));
@@ -379,7 +390,8 @@ private:
             safe->page = p;
             safe->hasMore = result.hasMore();
             for (const auto& t : result.items)
-                if (t.format == safe->format)   // the lists don't filter by format: this slot's only
+                if (t.format == safe->format   // the lists don't filter by format: this slot's only
+                    && (! safe->pedalsOnly.getToggleState() || t.gear == "pedal"))
                     safe->addCard (t);
             safe->layoutGrid();
         }, fresh);
@@ -436,7 +448,8 @@ private:
                 const auto* tab = tabs[ids.indexOf (which)];
                 const auto name = tab != nullptr ? tab->getButtonText() : which;
                 showMessage (which == "favorited" || which == "created" || which == "downloaded"
-                                 ? "No " + whatLoads (format) + " in your " + name + " yet. Find some with Browse TONE3000."
+                                 ? "No " + (pedalsOnly.getToggleState() ? juce::String ("pedal captures") : whatLoads (format))
+                                       + " in your " + name + " yet. Find some with Browse TONE3000."
                                  : "Nothing here for this slot right now. Try Browse TONE3000.");
                 if (more != nullptr)
                     more->setTopLeftPosition (0, 90);
@@ -455,6 +468,7 @@ private:
     std::unique_ptr<MoreCard> more;
     juce::Label message;
     juce::String format = "nam", which;
+    juce::ToggleButton pedalsOnly { "Pedals only" };
     int page = 0;
     bool hasMore = false, loading = false;
 };
@@ -714,7 +728,7 @@ void Tone3000Browser::openFor (rig::FileSlot s)
     status.setText ({}, juce::dontSendNotification);
     if (service.isSignedIn())
     {
-        library->setFormat (format);
+        library->setFormat (format, slot.isPedal());
         show (Screen::library);
     }
     else
@@ -770,7 +784,7 @@ void Tone3000Browser::close()
 void Tone3000Browser::signedIn()
 {
     rigProcessor.retryTone3000Downloads();   // anything a session was waiting for
-    library->setFormat (format);
+    library->setFormat (format, slot.isPedal());
     show (Screen::library);
 }
 

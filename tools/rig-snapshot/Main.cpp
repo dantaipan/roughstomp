@@ -16,6 +16,7 @@
 
 #include "Presets.h"
 #include "RigEditor.h"
+#include "ViewSettings.h"
 #include "RigProcessor.h"
 
 #include <iostream>
@@ -43,6 +44,7 @@ int main (int argc, char* argv[])
     double toneHz = 0.0, rate = 48000.0;
     juce::String toggleParam, asyncAmp;
     int waitMs = 0;
+    juce::SharedResourcePointer<ViewSettings> view;   // held for the whole run, so --view lasts
     juce::String tone3000Open;   // --tone3000=amp|power|cab[:toneId]: open TONE3000's browser   // --wait=SECONDS: pump messages (background loads, TONE3000 downloads) before the picture
     juce::StringArray presetActions;   // "load:NAME" / "save:NAME", in order
     for (int i = 2; i < argc; ++i)
@@ -61,6 +63,12 @@ int main (int argc, char* argv[])
         if (a.startsWith ("--swap="))
         {
             presetActions.add ("swap:" + a.fromFirstOccurrenceOf ("=", false, false));
+            continue;
+        }
+        if (a.startsWith ("--view="))
+        {
+            // Just for this picture: the preference itself isn't changed
+            view->setStyle (a.endsWith ("sliders") ? ViewSettings::Style::sliders : ViewSettings::Style::pedals, false);
             continue;
         }
         if (a.startsWith ("--tone3000="))
@@ -282,7 +290,7 @@ int main (int argc, char* argv[])
     if (auto* rigEditor = dynamic_cast<RigEditor*> (editor.get()); rigEditor != nullptr && tone3000Open.isNotEmpty())
     {
         const auto key = tone3000Open.upToFirstOccurrenceOf (":", false, false);
-        const auto slotId = key == "cab" ? rig::FileSlot::cab : key == "power" ? rig::FileSlot::power : rig::FileSlot::amp;
+        const auto slotId = rig::fileSlotFromKey (key).value_or (rig::FileSlot::amp);   // amp, power, cab, pre1...
         rigEditor->openTone3000 (slotId, false);
         const auto what = tone3000Open.fromFirstOccurrenceOf (":", false, false);
         if (const int toneId = what.getIntValue(); toneId > 0)

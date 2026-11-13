@@ -31,6 +31,8 @@ juce_add_binary_data(RigTone3000Assets
 target_sources(Rig PRIVATE
     Source/AmpModel.cpp
     Source/AmpModel.h
+    Source/CapturePedal.cpp
+    Source/CapturePedal.h
     Source/Presets.cpp
     Source/Presets.h
     Source/RigEditor.cpp
@@ -40,7 +42,9 @@ target_sources(Rig PRIVATE
     Source/SlotView.cpp
     Source/SlotView.h
     Source/Tone3000Browser.cpp
-    Source/Tone3000Browser.h)
+    Source/Tone3000Browser.h
+    Source/ViewSettings.cpp
+    Source/ViewSettings.h)
 
 target_compile_definitions(Rig PUBLIC
     JUCE_WEB_BROWSER=0

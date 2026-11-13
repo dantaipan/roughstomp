@@ -18,6 +18,7 @@ Plugins (VST3, AU and a standalone app each):
   - *Overdrive*, *Boost*: for in front of the amp
   - *Fuzz* (lower *Bias* for a gated, sputtering sound), *Big Fuzz* (long sustain, scooped tone), *Clean Drive* (keeps the guitar's own sound; *Gain* brings in more grit), *Blues Drive* (touch-sensitive and amp-like, with full lows; cleans up as you play softer)
   - *Octave*: up to three octaves (*Oct -1*, *Oct -2*, *Oct Up*) blended with *Direct*. *Vintage* is an analog-style divider: one note at a time, a solid square-wave sub, at its best on the low strings (chords and fast lines high up the neck confuse it, as they did the originals); *Poly* shifts everything, chords and fast lines included. *Tone* voices the octaves down, from a round, bass-like octave (down) to the whole shifted sound (up). In Poly, *Range* keeps the octave-down to notes below it (turn it down so only the low strings get it)
+  - *NAM Capture*: a capture of a real pedal (or anything) in a slot: *Load...* a `.nam` file or choose one from *TONE3000* (pedal captures first), then *Input* (drive into it), *Level* and *Mix*. Each costs about as much CPU as the amp, twice in the FX loop, where it runs once per stereo side
   - *EQ*: 7-band graphic EQ (100 Hz to 6.4 kHz, ±15 dB) and level, on sliders
   - *Chorus*: 1–3 voices, stereo width
   - *Tremolo*: sine, triangle or square; *Spread* pans it across the sides (100% = auto-pan)
@@ -27,7 +28,11 @@ Plugins (VST3, AU and a standalone app each):
   - *Compressor*: sustain, attack, level, blend (parallel compression)
   - *Wah*: *Position* is the pedal (map an expression pedal or automation to it in your host), or *Auto* for an envelope filter
 
-  Drag a pedal by its body onto another slot to swap them, in either row; settings travel with it.
+  Drag a pedal by its body onto another slot to swap them, in either row; settings (and a capture) travel with it.
+
+  *Pedals / Sliders* in the header switches every pedal between the hardware look and plain sliders with their values; it's a preference, remembered for every RoughStomp, and doesn't change sessions or presets.
+
+  ![The slider view, with a NAM capture in a pre-amp slot](docs/images/sliders.png)
 
   Delay and the modulation pedals have a *Sync* menu that follows the host tempo (120 BPM standalone); while synced, their Time or Rate knob is ignored, and while the host plays, synced modulation lines up with the beat. Delay and the reverbs let their tails ring out when switched off.
 - **Presets:** the bar at the top. Arrows step through presets, the name opens the menu, *Save* saves (over your own preset, or as a new one). Factory presets set pedals and settings but keep your amp and cab; your own presets save everything, including the files. A `*` means you've changed something since loading. They're `.rsrig` files in `~/Library/Application Support/RoughStomp/Presets` (*Show Presets Folder* in the menu).

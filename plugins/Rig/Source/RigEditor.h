@@ -120,6 +120,7 @@ private:
     void timerCallback() override;
     void chooseAmp (rig::AmpStage);
     void chooseCabinet();
+    void chooseSlotCapture (rig::Section, int slot);
     void refreshPanels();
 
     RigProcessor& rigProcessor;
@@ -132,6 +133,8 @@ private:
     juce::ToggleButton gateOnButton { "Gate" };
     juce::AudioProcessorValueTreeState::ButtonAttachment gateOnAttachment;
     juce::TextButton tunerButton { "Tuner" };
+    juce::TextButton pedalsViewButton { "Pedals" }, slidersViewButton { "Sliders" };   // the view preference
+    juce::SharedResourcePointer<ViewSettings> viewSettings;
     juce::AudioProcessorValueTreeState::ButtonAttachment tunerAttachment;
     TunerDisplay tuner;
     PresetBar presetBar;

@@ -1,5 +1,6 @@
 #include "RigProcessor.h"
 
+#include "CapturePedal.h"
 #include "RigEditor.h"
 #include "Presets.h"
 
@@ -17,7 +18,29 @@ juce::String sectionKey (Section s) { return s == Section::pre ? "pre" : "loop";
 
 juce::String fileSlotKey (FileSlot s)
 {
-    return s == FileSlot::amp ? "amp" : s == FileSlot::power ? "power" : "cab";
+    switch (s.kind)
+    {
+        case FileSlot::Kind::amp:   return "amp";
+        case FileSlot::Kind::power: return "power";
+        case FileSlot::Kind::cab:   return "cab";
+        case FileSlot::Kind::pedal: break;
+    }
+    return sectionKey (s.section) + juce::String (s.index + 1);
+}
+
+std::optional<FileSlot> fileSlotFromKey (const juce::String& key)
+{
+    if (key == "amp")   return FileSlot::amp;
+    if (key == "power") return FileSlot::power;
+    if (key == "cab")   return FileSlot::cab;
+    for (auto s : { Section::pre, Section::loop })
+        if (key.startsWith (sectionKey (s)))
+        {
+            const int i = key.fromFirstOccurrenceOf (sectionKey (s), false, false).getIntValue() - 1;
+            if (i >= 0 && i < slotsPerSection)
+                return FileSlot::pedal (s, i);
+        }
+    return std::nullopt;
 }
 
 Tone3000Source Tone3000Source::from (const rs::t3k::Tone& t, const rs::t3k::Model& m)
@@ -86,8 +109,10 @@ juce::String valueText (const fx::ParamInfo& p, float plain)
     if (unit == "dB")
         return juce::String (plain, 1) + " dB";
 
-    const int decimals = (p.maxValue - p.minValue) > 20.0f ? 0 : 1;
-    return juce::String (plain, decimals) + (unit.isEmpty() ? "" : " " + unit);
+    // (juce::String (x, 0) would mean "all the digits", not none)
+    const bool whole = (p.maxValue - p.minValue) > 20.0f;
+    const auto number = whole ? juce::String (juce::roundToInt (plain)) : juce::String (plain, 1);
+    return number + (unit.isEmpty() ? "" : " " + unit);
 }
 } // namespace rig
 
@@ -279,7 +304,11 @@ void RigProcessor::setSlotPedal (Section s, int i, juce::StringRef pedalId, bool
         return;
 
     const std::string id = juce::String (pedalId).toStdString();
-    std::shared_ptr<fx::Pedal> pedal = id.empty() ? nullptr : fx::registry::create (id);
+    std::shared_ptr<fx::Pedal> pedal;
+    if (id == CapturePedal::staticInfo().id)
+        pedal = std::make_shared<CapturePedal>();   // NAM lives in the plugin, so this one isn't in fx-core's registry
+    else if (! id.empty())
+        pedal = fx::registry::create (id);
 
     if (resetKnobs && pedal != nullptr)
     {
@@ -295,6 +324,11 @@ void RigProcessor::setSlotPedal (Section s, int i, juce::StringRef pedalId, bool
         auto& sl = slot (s, i);
         sl.pedal = std::move (pedal);
         sl.info = sl.pedal != nullptr ? &sl.pedal->info() : nullptr;
+        // A new pedal: any capture this slot held is gone with the old one
+        ++sl.captureGeneration;
+        sl.captureFile = sl.captureLoading = juce::File();
+        sl.captureProblem = {};
+        tone3000Sources.erase (rig::fileSlotKey (rig::FileSlot::pedal (s, i)));
         publishLayout (s);
     }
     updateLatency();
@@ -332,8 +366,30 @@ void RigProcessor::swapSlots (Section sa, int a, Section sb, int b)
     write (sa, a, second);
     write (sb, b, first);
 
+    // Captures (and where they came from) travel with their pedals
+    const auto keyA = rig::fileSlotKey (rig::FileSlot::pedal (sa, a)), keyB = rig::fileSlotKey (rig::FileSlot::pedal (sb, b));
+    juce::File fileA, fileB;
+    std::optional<rig::Tone3000Source> sourceA, sourceB;
+    {
+        const std::scoped_lock lock (messageLock);
+        auto current = [] (const Slot& sl) { return sl.captureLoading != juce::File() ? sl.captureLoading : sl.captureFile; };
+        fileA = current (slot (sa, a));   // one still loading counts too
+        fileB = current (slot (sb, b));
+        if (auto it = tone3000Sources.find (keyA); it != tone3000Sources.end()) sourceA = it->second;
+        if (auto it = tone3000Sources.find (keyB); it != tone3000Sources.end()) sourceB = it->second;
+    }
+    auto placeSources = [&]
+    {
+        const std::scoped_lock lock (messageLock);
+        tone3000Sources.erase (keyA);
+        tone3000Sources.erase (keyB);
+        if (sourceA) tone3000Sources[keyB] = *sourceA;
+        if (sourceB) tone3000Sources[keyA] = *sourceB;
+    };
+
     if (sa == sb)
     {
+        // The pedals themselves move, loaded captures and all
         {
             const std::scoped_lock lock (messageLock);
             auto& x = slot (sa, a);
@@ -341,14 +397,26 @@ void RigProcessor::swapSlots (Section sa, int a, Section sb, int b)
             std::swap (x.pedal, y.pedal);
             x.info = x.pedal != nullptr ? &x.pedal->info() : nullptr;
             y.info = y.pedal != nullptr ? &y.pedal->info() : nullptr;
+            std::swap (x.captureFile, y.captureFile);
+            std::swap (x.captureLoading, y.captureLoading);
+            std::swap (x.captureProblem, y.captureProblem);
+            ++x.captureGeneration;   // a load in flight would land in the wrong slot
+            ++y.captureGeneration;
             publishLayout (sa);
         }
+        placeSources();
         updateLatency();
     }
     else
     {
+        // Between rows the channel count differs: fresh pedals, captures reloaded
         setSlotPedal (sa, a, second.id, false);
         setSlotPedal (sb, b, first.id, false);
+        placeSources();
+        if (first.id == CapturePedal::staticInfo().id.data() && fileA != juce::File())
+            loadSlotCapture (sb, b, fileA);
+        if (second.id == CapturePedal::staticInfo().id.data() && fileB != juce::File())
+            loadSlotCapture (sa, a, fileB);
     }
 }
 
@@ -520,7 +588,7 @@ void RigProcessor::clearAmp (AmpStage stage)
         a.expectedRate = 0.0;
         a.latency = 0;
         a.problem = {};
-        tone3000Sources[static_cast<size_t> (rig::fileSlot (stage))] = {};
+        tone3000Sources.erase (rig::fileSlotKey (rig::fileSlot (stage)));
     }
     updateLatency();
 }
@@ -626,7 +694,7 @@ void RigProcessor::clearCabinet()
     cabinetFile = juce::File();
     cabinetProblem = {};
     cabinetSource.setSize (0, 0);
-    tone3000Sources[static_cast<size_t> (rig::FileSlot::cab)] = {};
+    tone3000Sources.erase (rig::fileSlotKey (rig::FileSlot::cab));
 }
 
 //==============================================================================
@@ -642,13 +710,177 @@ rs::t3k::Service& RigProcessor::tone3000()
 rig::Tone3000Source RigProcessor::getTone3000Source (rig::FileSlot s) const
 {
     const std::scoped_lock lock (messageLock);
-    return tone3000Sources[static_cast<size_t> (s)];
+    const auto it = tone3000Sources.find (rig::fileSlotKey (s));
+    return it != tone3000Sources.end() ? it->second : rig::Tone3000Source();
 }
 
 void RigProcessor::forgetTone3000Source (rig::FileSlot s)
 {
     const std::scoped_lock lock (messageLock);
-    tone3000Sources[static_cast<size_t> (s)] = {};
+    tone3000Sources.erase (rig::fileSlotKey (s));
+}
+
+juce::File RigProcessor::fileOf (rig::FileSlot s) const
+{
+    if (s == rig::FileSlot::cab)
+        return getCabinetFile();
+    if (s.isPedal())
+    {
+        // One still loading counts: a save meanwhile mustn't lose it
+        const std::scoped_lock lock (messageLock);
+        const auto& sl = slot (s.section, s.index);
+        return sl.captureLoading != juce::File() ? sl.captureLoading : sl.captureFile;
+    }
+    return getAmpFile (s == rig::FileSlot::amp ? AmpStage::amp : AmpStage::power);
+}
+
+void RigProcessor::loadFileInto (rig::FileSlot s, const juce::File& file, bool showNewNow,
+                                 std::function<void (const juce::String&)> done)
+{
+    if (s == rig::FileSlot::cab)
+    {
+        const auto error = loadCabinet (file);
+        if (done)
+            done (error);
+    }
+    else if (s.isPedal())
+        loadSlotCapture (s.section, s.index, file, std::move (done));
+    else
+        loadAmpAsync (s == rig::FileSlot::amp ? AmpStage::amp : AmpStage::power, file,
+                      showNewNow ? AmpLoad::showNewNow : AmpLoad::keepOld, std::move (done));
+}
+
+//==============================================================================
+// NAM captures in pedal slots
+
+void RigProcessor::loadSlotCapture (Section s, int i, const juce::File& file,
+                                    std::function<void (const juce::String&)> done, bool now)
+{
+    double rate;
+    int block, generation;
+    const int channels = s == Section::pre ? 1 : loopChannels;
+    {
+        const std::scoped_lock lock (messageLock);
+        rate = currentSampleRate;
+        block = maxBlock;
+        auto& sl = slot (s, i);
+        generation = ++sl.captureGeneration;
+        sl.captureLoading = file;
+        sl.captureProblem = {};
+    }
+
+    struct Built
+    {
+        std::unique_ptr<CapturePedal::Captures> captures;
+        juce::String error;
+    };
+    auto build = [file, rate, block, channels]
+    {
+        auto b = std::make_shared<Built>();
+        b->captures = std::make_unique<CapturePedal::Captures>();
+        for (int c = 0; c < channels; ++c)
+        {
+            auto result = rig::AmpModel::load (file, rate, block);
+            if (result.model == nullptr)
+            {
+                b->error = result.error.isNotEmpty() ? result.error : juce::String ("Couldn't load it.");
+                b->captures.reset();
+                return b;
+            }
+            b->captures->models.push_back (std::move (result.model));
+        }
+        b->captures->latency = b->captures->models.front()->getLatencySamples();
+        return b;
+    };
+
+    juce::WeakReference<RigProcessor> self (this);
+    auto finish = [self, s, i, file, generation, rate, block, done] (std::shared_ptr<Built> b)
+    {
+        auto* p = self.get();
+        if (p == nullptr)
+            return;
+        double nowRate;
+        int nowBlock;
+        CapturePedal* pedal = nullptr;
+        {
+            const std::scoped_lock lock (p->messageLock);
+            auto& sl = p->slot (s, i);
+            if (sl.captureGeneration != generation)
+                return;   // a later load, clear or pedal change took over
+            sl.captureLoading = juce::File();
+            sl.captureFile = file;
+            pedal = dynamic_cast<CapturePedal*> (sl.pedal.get());
+            nowRate = p->currentSampleRate;
+            nowBlock = p->maxBlock;
+            if (b->captures == nullptr)
+                sl.captureProblem = file.existsAsFile() ? b->error : juce::String ("File not found");
+        }
+
+        if (pedal != nullptr && b->captures != nullptr)
+        {
+            if (! juce::approximatelyEqual (nowRate, rate) || nowBlock != block)
+            {
+                for (auto& m : b->captures->models)
+                    m->prepare (nowRate, nowBlock);
+                b->captures->latency = b->captures->models.front()->getLatencySamples();
+            }
+            pedal->setCaptures (std::move (b->captures));
+            {
+                const std::scoped_lock lock (p->messageLock);
+                p->publishLayout (s);   // the capture's latency now counts
+            }
+            p->updateLatency();
+        }
+        else if (pedal != nullptr)
+            pedal->setCaptures (nullptr);
+        if (done)
+            done (b->error);
+    };
+
+    if (now)
+        return finish (build());
+    loader.addJob ([build, finish]
+    {
+        auto b = build();
+        juce::MessageManager::callAsync ([finish, b] { finish (b); });
+    });
+}
+
+void RigProcessor::clearSlotCapture (Section s, int i)
+{
+    CapturePedal* pedal = nullptr;
+    {
+        const std::scoped_lock lock (messageLock);
+        auto& sl = slot (s, i);
+        ++sl.captureGeneration;
+        sl.captureFile = sl.captureLoading = juce::File();
+        sl.captureProblem = {};
+        tone3000Sources.erase (rig::fileSlotKey (rig::FileSlot::pedal (s, i)));
+        pedal = dynamic_cast<CapturePedal*> (sl.pedal.get());
+    }
+    if (pedal != nullptr)
+    {
+        pedal->setCaptures (nullptr);
+        {
+            const std::scoped_lock lock (messageLock);
+            publishLayout (s);
+        }
+        updateLatency();
+    }
+}
+
+juce::File RigProcessor::getSlotCaptureFile (Section s, int i) const
+{
+    const std::scoped_lock lock (messageLock);
+    const auto& sl = slot (s, i);
+    return sl.captureLoading != juce::File() ? sl.captureLoading : sl.captureFile;
+}
+
+juce::String RigProcessor::getSlotCaptureProblem (Section s, int i) const
+{
+    const std::scoped_lock lock (messageLock);
+    const auto& sl = slot (s, i);
+    return sl.captureLoading != juce::File() ? juce::String ("Loading...") : sl.captureProblem;
 }
 
 void RigProcessor::loadTone3000 (rig::FileSlot slotId, const rs::t3k::Tone& tone, const rs::t3k::Model& model,
@@ -674,22 +906,33 @@ void RigProcessor::loadTone3000 (rig::FileSlot slotId, const rs::t3k::Tone& tone
             if (auto* q = self.get(); q != nullptr && loadError.isEmpty())
             {
                 const std::scoped_lock lock (q->messageLock);
-                q->tone3000Sources[static_cast<size_t> (slotId)] = source;
+                q->tone3000Sources[rig::fileSlotKey (slotId)] = source;
             }
             if (done)
                 done (loadError);
         };
-
-        if (slotId == rig::FileSlot::cab)
-            loaded (p->loadCabinet (file));
-        else
-            p->loadAmpAsync (slotId == rig::FileSlot::amp ? AmpStage::amp : AmpStage::power, file,
-                             AmpLoad::keepOld, loaded);
+        p->loadFileInto (slotId, file, false, loaded);
     });
 }
 
 void RigProcessor::setSlotProblem (rig::FileSlot s, const juce::File& file, const juce::String& problem)
 {
+    if (s.isPedal())
+    {
+        CapturePedal* pedal = nullptr;
+        {
+            const std::scoped_lock lock (messageLock);
+            auto& sl = slot (s.section, s.index);
+            ++sl.captureGeneration;
+            sl.captureLoading = juce::File();
+            sl.captureFile = file;
+            sl.captureProblem = problem;
+            pedal = dynamic_cast<CapturePedal*> (sl.pedal.get());
+        }
+        if (pedal != nullptr)
+            pedal->setCaptures (nullptr);
+        return;
+    }
     if (s == rig::FileSlot::cab)
     {
         const std::scoped_lock lock (messageLock);
@@ -717,7 +960,7 @@ void RigProcessor::redownload (rig::FileSlot s, const rig::Tone3000Source& sourc
 {
     {
         const std::scoped_lock lock (messageLock);
-        tone3000Sources[static_cast<size_t> (s)] = source;
+        tone3000Sources[rig::fileSlotKey (s)] = source;
     }
 
     auto& service = tone3000();
@@ -736,9 +979,7 @@ void RigProcessor::redownload (rig::FileSlot s, const rig::Tone3000Source& sourc
         if (p == nullptr)
             return false;
         const auto current = p->getTone3000Source (s);
-        const auto currentFile = s == rig::FileSlot::cab ? p->getCabinetFile()
-                                                         : p->getAmpFile (s == rig::FileSlot::amp ? AmpStage::amp : AmpStage::power);
-        return current.modelId == source.modelId && currentFile == file;
+        return current.modelId == source.modelId && p->fileOf (s) == file;
     };
 
     service.model (source.modelId, [self, s, file, source, stillWanted] (bool ok, const rs::t3k::Model& model, const juce::String& error)
@@ -758,24 +999,25 @@ void RigProcessor::redownload (rig::FileSlot s, const rig::Tone3000Source& sourc
             auto* q = self.get();
             if (! got.existsAsFile())
                 return q->setSlotProblem (s, file, e);
-            if (s == rig::FileSlot::cab)
-                q->loadCabinet (got);
-            else
-                q->loadAmpAsync (s == rig::FileSlot::amp ? AmpStage::amp : AmpStage::power, got, AmpLoad::showNewNow);
+            q->loadFileInto (s, got, true, {});
         });
     });
 }
 
 void RigProcessor::retryTone3000Downloads()
 {
-    for (auto s : { rig::FileSlot::amp, rig::FileSlot::power, rig::FileSlot::cab })
+    std::map<juce::String, rig::Tone3000Source> sources;
     {
-        const auto source = getTone3000Source (s);
-        const auto file = s == rig::FileSlot::cab ? getCabinetFile()
-                                                  : getAmpFile (s == rig::FileSlot::amp ? AmpStage::amp : AmpStage::power);
-        if (source.valid() && file != juce::File() && ! file.existsAsFile())
-            redownload (s, source, file);
+        const std::scoped_lock lock (messageLock);
+        sources = tone3000Sources;
     }
+    for (const auto& [key, source] : sources)
+        if (const auto s = rig::fileSlotFromKey (key))
+        {
+            const auto file = fileOf (*s);
+            if (source.valid() && file != juce::File() && ! file.existsAsFile())
+                redownload (*s, source, file);
+        }
 }
 
 juce::String RigProcessor::getCabinetProblem() const
@@ -843,6 +1085,10 @@ void RigProcessor::timerCallback()
         loopChain.collectGarbage();
         mainAmp.handoff.collect();
         powerAmp.handoff.collect();
+        for (auto& row : slots)
+            for (auto& sl : row)
+                if (auto* capture = dynamic_cast<CapturePedal*> (sl.pedal.get()))
+                    capture->collect();
     }
     updateLatency();
 }
@@ -865,6 +1111,7 @@ void RigProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
         const std::scoped_lock lock (messageLock);
         currentSampleRate = sampleRate;
         maxBlock = samplesPerBlock;
+        loopChannels = numOut;
 
         preChain.prepare (sampleRate, samplesPerBlock, 1);
         loopChain.prepare (sampleRate, samplesPerBlock, numOut);
@@ -1131,12 +1378,23 @@ std::unique_ptr<juce::XmlElement> RigProcessor::captureState()
     rigTree.setProperty ("powerFile", getAmpFile (AmpStage::power).getFullPathName(), nullptr);
     rigTree.setProperty ("cabFile",   getCabinetFile().getFullPathName(), nullptr);
 
+    // Captures in pedal slots
+    for (auto s : { Section::pre, Section::loop })
+        for (int i = 0; i < rig::slotsPerSection; ++i)
+            if (const auto f = fileOf (rig::FileSlot::pedal (s, i)); f != juce::File())
+                rigTree.setProperty (rig::fileSlotKey (rig::FileSlot::pedal (s, i)) + "File", f.getFullPathName(), nullptr);
+
     // Files from TONE3000: what they were, to show and to download again
-    for (auto s : { rig::FileSlot::amp, rig::FileSlot::power, rig::FileSlot::cab })
-        if (const auto t = getTone3000Source (s); t.valid())
+    std::map<juce::String, rig::Tone3000Source> sources;
+    {
+        const std::scoped_lock lock (messageLock);
+        sources = tone3000Sources;
+    }
+    for (const auto& [key, t] : sources)
+        if (t.valid())
         {
             juce::ValueTree node ("Tone3000");
-            node.setProperty ("slot", rig::fileSlotKey (s), nullptr);
+            node.setProperty ("slot", key, nullptr);
             node.setProperty ("toneId", t.toneId, nullptr);
             node.setProperty ("modelId", t.modelId, nullptr);
             node.setProperty ("toneTitle", t.toneTitle, nullptr);
@@ -1195,15 +1453,14 @@ void RigProcessor::restoreState (const juce::XmlElement& xml, Files files)
     if (files == Files::keepCurrent)
         return;
 
-    std::array<rig::Tone3000Source, 3> sources {};
+    std::map<juce::String, rig::Tone3000Source> sources;
     for (const auto& node : rigTree)
     {
         if (! node.hasType ("Tone3000"))
             continue;
-        for (auto s : { rig::FileSlot::amp, rig::FileSlot::power, rig::FileSlot::cab })
-            if (node.getProperty ("slot").toString() == rig::fileSlotKey (s))
+        if (const auto s = rig::fileSlotFromKey (node.getProperty ("slot").toString()))
             {
-                auto& t = sources[static_cast<size_t> (s)];
+                auto& t = sources[rig::fileSlotKey (*s)];
                 t.toneId = node.getProperty ("toneId");
                 t.modelId = node.getProperty ("modelId");
                 t.toneTitle = node.getProperty ("toneTitle").toString();
@@ -1220,10 +1477,10 @@ void RigProcessor::restoreState (const juce::XmlElement& xml, Files files)
     // A TONE3000 file that's gone (a new Mac, a cleared folder) is downloaded again
     auto missingTone3000 = [&] (rig::FileSlot s, const juce::String& path)
     {
-        const auto& t = sources[static_cast<size_t> (s)];
-        if (! t.valid() || path.isEmpty() || juce::File (path).existsAsFile())
+        const auto it = sources.find (rig::fileSlotKey (s));
+        if (it == sources.end() || ! it->second.valid() || path.isEmpty() || juce::File (path).existsAsFile())
             return false;
-        redownload (s, t, juce::File (path));
+        redownload (s, it->second, juce::File (path));
         return true;
     };
 
@@ -1256,6 +1513,18 @@ void RigProcessor::restoreState (const juce::XmlElement& xml, Files files)
         loadCabinet (juce::File (cab));
     else
         clearCabinet();
+
+    // Captures in pedal slots (the pedals themselves were set above)
+    for (auto s : { Section::pre, Section::loop })
+        for (int i = 0; i < rig::slotsPerSection; ++i)
+        {
+            const auto fs = rig::FileSlot::pedal (s, i);
+            const auto path = rigTree.getProperty (rig::fileSlotKey (fs) + "File").toString();
+            if (path.isEmpty() || dynamic_cast<CapturePedal*> (slot (s, i).pedal.get()) == nullptr)
+                continue;
+            if (! missingTone3000 (fs, path))
+                loadSlotCapture (s, i, juce::File (path), {}, files == Files::restore);
+        }
 
     // The files are in; now what they came from (local files have none)
     {
