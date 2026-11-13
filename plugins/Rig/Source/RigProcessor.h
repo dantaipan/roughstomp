@@ -28,19 +28,23 @@ constexpr int numSections     = 2;
 constexpr int slotsPerSection = 6;
 constexpr int knobsPerSlot    = 8;
 
-/** Amps run before the loop, the power amp after it. */
-enum class AmpStage { amp, power };
+/** The two amps, side by side: each feeds its own cab, then they're panned
+    into stereo before the loop. */
+enum class AmpStage { amp, ampB };
+
+/** The two cabs: A after Amp A, B after Amp B (B with no IR of its own uses A's). */
+enum class Cab { a, b };
 
 /** Where a file goes: the two amps, the cab, or a pedal slot holding a NAM
     capture. */
 struct FileSlot
 {
-    enum class Kind { amp, power, cab, pedal };
+    enum class Kind { amp, ampB, cab, cabB, pedal };
     Kind kind = Kind::amp;
     Section section = Section::pre;   // for pedal slots
     int index = 0;
 
-    static const FileSlot amp, power, cab;
+    static const FileSlot amp, ampB, cab, cabB;
     static FileSlot pedal (Section s, int i) noexcept { return { Kind::pedal, s, i }; }
 
     bool isPedal() const noexcept { return kind == Kind::pedal; }
@@ -51,11 +55,13 @@ struct FileSlot
     bool operator!= (const FileSlot& o) const noexcept { return ! (*this == o); }
 };
 inline constexpr FileSlot FileSlot::amp   { FileSlot::Kind::amp,   Section::pre, 0 };
-inline constexpr FileSlot FileSlot::power { FileSlot::Kind::power, Section::pre, 0 };
+inline constexpr FileSlot FileSlot::ampB  { FileSlot::Kind::ampB,  Section::pre, 0 };
 inline constexpr FileSlot FileSlot::cab   { FileSlot::Kind::cab,   Section::pre, 0 };
+inline constexpr FileSlot FileSlot::cabB  { FileSlot::Kind::cabB,  Section::pre, 0 };
 
-inline FileSlot fileSlot (AmpStage s) noexcept { return s == AmpStage::amp ? FileSlot::amp : FileSlot::power; }
-juce::String fileSlotKey (FileSlot);                       // "amp", "power", "cab", "pre3", "loop1"...
+inline FileSlot fileSlot (AmpStage s) noexcept { return s == AmpStage::amp ? FileSlot::amp : FileSlot::ampB; }
+inline FileSlot fileSlot (Cab c) noexcept { return c == Cab::a ? FileSlot::cab : FileSlot::cabB; }
+juce::String fileSlotKey (FileSlot);                       // "amp", "ampB", "cab", "cabB", "pre3", "loop1"...
 std::optional<FileSlot> fileSlotFromKey (const juce::String&);
 
 /** Where a slot's file came from when it's a TONE3000 download: what to show
@@ -92,8 +98,13 @@ namespace ParamIDs
     inline const juce::ParameterID loopSend   { "loopSend",   1 };
     inline const juce::ParameterID loopReturn { "loopReturn", 1 };
     inline const juce::ParameterID loopMix    { "loopMix",    1 };
-    inline const juce::ParameterID powerOn    { "powerOn",    1 };
-    inline const juce::ParameterID cabOn      { "cabOn",      1 };
+    inline const juce::ParameterID powerOn    { "powerOn",    1 };   // Amp B's On (once the power amp's)
+    inline const juce::ParameterID ampBGain   { "ampBGain",   1 };
+    inline const juce::ParameterID ampBLevel  { "ampBLevel",  1 };
+    inline const juce::ParameterID ampPan     { "ampPan",     1 };
+    inline const juce::ParameterID ampBPan    { "ampBPan",    1 };
+    inline const juce::ParameterID cabOn      { "cabOn",      1 };   // Cab A's On (once the only cab's)
+    inline const juce::ParameterID cabBOn     { "cabBOn",     1 };
     inline const juce::ParameterID output     { "output",     1 };
     inline const juce::ParameterID gateOn     { "gateOn",     1 };
     inline const juce::ParameterID gateThreshold { "gateThreshold", 1 };
@@ -148,7 +159,7 @@ public:
     /** Everything: parameters, pedals, file paths, preset name. */
     std::unique_ptr<juce::XmlElement> captureState();
 
-    /** keepCurrent leaves the amp, power amp and cab as they are (factory
+    /** keepCurrent leaves the amps and cabs as they are (factory
         presets don't know which captures you have). */
     enum class Files { restore, restoreInBackground, keepCurrent };
     void restoreState (const juce::XmlElement&, Files);
@@ -206,10 +217,10 @@ public:
     };
     TunerReading readTuner();
 
-    juce::String loadCabinet (const juce::File&);
-    void clearCabinet();
-    juce::File getCabinetFile() const;
-    juce::String getCabinetProblem() const;
+    juce::String loadCabinet (const juce::File&, rig::Cab = rig::Cab::a);
+    void clearCabinet (rig::Cab = rig::Cab::a);
+    juce::File getCabinetFile (rig::Cab = rig::Cab::a) const;
+    juce::String getCabinetProblem (rig::Cab = rig::Cab::a) const;
 
     // NAM captures in pedal slots (message thread) -------------------------------
 
@@ -257,7 +268,7 @@ private:
         int captureGeneration = 0;   // bumped by every load, clear or pedal change: stale loads are dropped
     };
 
-    /** One model per channel it runs on: 1 for the amp, 2 for the power amp. */
+    /** An amp's model (a vector, as the handoff swaps whole objects). */
     struct Amps
     {
         std::vector<std::unique_ptr<rig::AmpModel>> models;
@@ -286,8 +297,8 @@ private:
     static constexpr size_t index (rig::Section s) noexcept { return static_cast<size_t> (s); }
     Slot& slot (rig::Section s, int i) noexcept { return slots[index (s)][static_cast<size_t> (i)]; }
     const Slot& slot (rig::Section s, int i) const noexcept { return slots[index (s)][static_cast<size_t> (i)]; }
-    AmpState& amp (rig::AmpStage s) noexcept { return s == rig::AmpStage::amp ? mainAmp : powerAmp; }
-    const AmpState& amp (rig::AmpStage s) const noexcept { return s == rig::AmpStage::amp ? mainAmp : powerAmp; }
+    AmpState& amp (rig::AmpStage s) noexcept { return s == rig::AmpStage::amp ? mainAmp : ampBState; }
+    const AmpState& amp (rig::AmpStage s) const noexcept { return s == rig::AmpStage::amp ? mainAmp : ampBState; }
     fx::Chain& chain (rig::Section s) noexcept { return s == rig::Section::pre ? preChain : loopChain; }
 
     juce::AudioProcessorValueTreeState::ParameterLayout createLayout();
@@ -309,15 +320,22 @@ private:
     mutable std::mutex messageLock;   // message-side state; the audio thread never takes it
 
     fx::Chain preChain, loopChain;
-    AmpState mainAmp, powerAmp;
+    AmpState mainAmp, ampBState;
 
-    juce::dsp::Convolution cabinet { juce::dsp::Convolution::NonUniform { 1024 } };
-    std::atomic<bool> cabinetLoaded { false };
-    juce::File cabinetFile;
-    juce::String cabinetProblem;
-    juce::AudioBuffer<float> cabinetSource;   // the IR as read, at its own rate
-    double cabinetSourceRate = 0.0;
-    double cabinetRate = 0.0;                 // the rate it was last handed to `cabinet` at
+    /** A cab: its IR as read (at its own rate), handed to a mono convolver. */
+    struct CabState
+    {
+        juce::dsp::Convolution convolution { juce::dsp::Convolution::NonUniform { 1024 } };
+        std::atomic<bool> loaded { false };   // an IR is in (B: its own or A's)
+        juce::File file;
+        juce::String problem;
+        juce::AudioBuffer<float> source;
+        double sourceRate = 0.0;
+        double rate = 0.0;                    // the rate it was last handed over at
+    };
+    CabState cabA, cabB;
+    CabState& cabState (rig::Cab c) noexcept { return c == rig::Cab::a ? cabA : cabB; }
+    const CabState& cabState (rig::Cab c) const noexcept { return c == rig::Cab::a ? cabA : cabB; }
     float cabinetGain = 4.0f;                 // audio thread; set in prepareToPlay
 
     std::map<juce::String, rig::Tone3000Source> tone3000Sources;   // by fileSlotKey; messageLock
@@ -333,10 +351,10 @@ private:
     void redownload (rig::FileSlot, const rig::Tone3000Source&, const juce::File&);
     void setSlotProblem (rig::FileSlot, const juce::File&, const juce::String& problem);
 
-    /** Resamples the IR to the current rate (with fx's resampler: JUCE's own
-        lets through highs the cab should cut) and hands it to the convolver.
-        messageLock held. */
-    void applyCabinet();
+    /** Resamples a cab's IR to the current rate (with fx's resampler: JUCE's
+        own lets through highs the cab should cut) and hands it to its
+        convolver. Cab B with no IR of its own takes A's. messageLock held. */
+    void applyCabinet (rig::Cab);
 
     std::atomic<float>* inputDb = nullptr;
     std::atomic<float>* ampOn = nullptr;
@@ -346,8 +364,13 @@ private:
     std::atomic<float>* loopSendDb = nullptr;
     std::atomic<float>* loopReturnDb = nullptr;
     std::atomic<float>* loopMix = nullptr;
-    std::atomic<float>* powerOn = nullptr;
-    std::atomic<float>* cabOn = nullptr;
+    std::atomic<float>* powerOn = nullptr;   // Amp B's On
+    std::atomic<float>* ampBGainDb = nullptr;
+    std::atomic<float>* ampBLevelDb = nullptr;
+    std::atomic<float>* ampPanValue = nullptr;
+    std::atomic<float>* ampBPanValue = nullptr;
+    std::atomic<float>* cabOn = nullptr;   // Cab A's On
+    std::atomic<float>* cabBOn = nullptr;
     std::atomic<float>* outputDb = nullptr;
     std::atomic<float>* gateOn = nullptr;
     std::atomic<float>* gateThresholdDb = nullptr;
@@ -369,16 +392,16 @@ private:
     fx::PitchDetector pitchDetector;
     double pitchDetectorRate = 0.0;
 
-    fx::LinearSmoother inputGain { 1.0f }, ampGain { 1.0f }, ampLevel { 1.0f },
-                       sendGain { 1.0f }, returnGain { 1.0f }, mix { 1.0f }, outputGain { 1.0f };
+    fx::LinearSmoother inputGain { 1.0f }, ampGain { 1.0f }, ampLevel { 1.0f }, ampBGain { 1.0f }, ampBLevel { 1.0f },
+                       sendGain { 1.0f }, returnGain { 1.0f }, mix { 1.0f }, outputGain { 1.0f },
+                       panA { 0.0f }, panB { 0.0f };
 
-    // Amp, power amp and cab switch on and off by crossfading with their
-    // dry signal (the amps' dry delayed to match their resampling latency)
-    fx::LinearSmoother ampBlend { 1.0f }, powerBlend { 1.0f }, cabBlend { 1.0f };
-    fx::DelayLine ampDryLine;
-    std::array<fx::DelayLine, 2> powerDryLines;
-    std::vector<float> ampDry;
-    std::array<std::vector<float>, 2> powerDry, cabDry;
+    // Amp A and the cabs switch on and off by crossfading with their dry
+    // signal (Amp A's delayed to match its resampling latency); Amp B fades
+    // to silence. The shorter amp path is delayed to line up with the longer
+    fx::LinearSmoother ampBlend { 1.0f }, ampBOnGain { 1.0f }, cabBlendA { 1.0f }, cabBlendB { 1.0f };
+    fx::DelayLine ampDryLine, alignA, alignB;
+    std::vector<float> ampDry, pathB, pathBOn, cabDryA, cabDryB;
 
     // The loop's dry path, delayed to line up with its pedals' latency
     std::array<std::vector<float>, 2> dryDelay, dry;

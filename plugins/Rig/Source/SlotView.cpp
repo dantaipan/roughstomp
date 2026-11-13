@@ -316,8 +316,7 @@ void SlotView::rebuild()
                     attachment->setValueAsCompleteGesture (rig::toNormalised (info, plain));
                 };
                 attachment->sendInitialUpdate();
-                if (! sliders)
-                    box->setLookAndFeel (pedalLook.get());
+                box->setLookAndFeel (sliders ? static_cast<juce::LookAndFeel*> (&sliderLook.get()) : pedalLook.get());
                 addAndMakeVisible (*box);
                 choices.push_back (std::move (c));
             }
@@ -328,6 +327,7 @@ void SlotView::rebuild()
             onButton = std::make_unique<juce::TextButton> ("On");
             onButton->setClickingTogglesState (true);
             onButton->setTooltip ("On / off");
+            onButton->setLookAndFeel (&sliderLook.get());
             onAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (apvts, rig::slotOnID (section, index).getParamID(), *onButton);
             addAndMakeVisible (*onButton);
         }

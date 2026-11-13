@@ -15,8 +15,9 @@ constexpr int headerHeight = 44;
 juce::String slotName (rig::FileSlot s)
 {
     if (s.isPedal())
-        return (s.section == rig::Section::pre ? "pre-amp slot " : "FX loop slot ") + juce::String (s.index + 1);
-    return s == rig::FileSlot::amp ? "Amp" : s == rig::FileSlot::power ? "Power amp" : "Cab";
+        return (s.section == rig::Section::pre ? "the pre-amp slot " : "the FX loop slot ") + juce::String (s.index + 1);
+    return s == rig::FileSlot::amp ? "Amp A" : s == rig::FileSlot::ampB ? "Amp B"
+         : s == rig::FileSlot::cab ? "Cab A" : "Cab B";
 }
 
 juce::String whatLoads (const juce::String& format)
@@ -610,7 +611,7 @@ private:
             return status.setText (error, juce::dontSendNotification);
         if (tone.format != format)
             return status.setText ("This is a " + rs::t3k::formatName (tone.format) + " tone: load it in the "
-                                       + (tone.isIr() ? "Cab." : "Amp or Power amp."),
+                                       + (tone.isIr() ? "a cab." : "an amp or a pedal slot."),
                                    juce::dontSendNotification);
         if (list.empty())
             return status.setText ("This tone has nothing RoughStomp can load.", juce::dontSendNotification);
@@ -724,7 +725,7 @@ Tone3000Browser::~Tone3000Browser()
 void Tone3000Browser::openFor (rig::FileSlot s)
 {
     slot = s;
-    format = s == rig::FileSlot::cab ? "ir" : "nam";
+    format = s == rig::FileSlot::cab || s == rig::FileSlot::cabB ? "ir" : "nam";
     status.setText ({}, juce::dontSendNotification);
     if (service.isSignedIn())
     {
@@ -864,7 +865,7 @@ void Tone3000Browser::paint (juce::Graphics& g)
     g.drawImage (logo, logoArea);
     g.setColour (fam::dimText);
     g.setFont (fam::font (14.0f));
-    g.drawText ("for the " + slotName (slot) + " (" + whatLoads (format) + ")",
+    g.drawText ("for " + slotName (slot) + " (" + whatLoads (format) + ")",
                 juce::Rectangle<float> (logoArea.getRight() + 14.0f, static_cast<float> (h.getY()), 260.0f, static_cast<float> (h.getHeight())),
                 juce::Justification::centredLeft);
 

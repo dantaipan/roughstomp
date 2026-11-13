@@ -8,7 +8,6 @@ namespace
 namespace fam = rs::ui::family;
 const juce::Colour background = fam::panel;
 const juce::Colour ink        = fam::cream;
-const juce::Colour warning    = fam::amber;
 
 constexpr int margin = 12;
 constexpr int slotWidth = 148, slotGap = 6, slotHeight = 300;
@@ -46,107 +45,6 @@ void drawSectionLabel (juce::Graphics& g, juce::Rectangle<int> area, const juce:
 } // namespace
 
 //==============================================================================
-FilePanel::FilePanel (const juce::String& t, const juce::String& empty,
-                      juce::AudioProcessorValueTreeState& apvts, const juce::ParameterID& onParam)
-    : title (t), emptyText (empty), onAttachment (apvts, onParam.getParamID(), on)
-{
-    load.onClick  = [this] { if (onLoad)  onLoad(); };
-    clear.onClick = [this] { if (onClear) onClear(); };
-    tone3000.onClick = [this] { if (onTone3000) onTone3000(); };
-    clear.setTooltip ("Clear");
-    tone3000.setTooltip ("Choose from TONE3000's library");
-    name.addMouseListener (this, false);   // a TONE3000 file's name opens its tone
-
-    name.setFont (fam::font (14.0f));
-    name.setColour (juce::Label::textColourId, ink);
-    name.setMinimumHorizontalScale (1.0f);   // long names end in "..." rather than squashing
-    problem.setFont (fam::font (12.0f));
-    problem.setColour (juce::Label::textColourId, warning);
-    problem.setMinimumHorizontalScale (0.9f);
-
-    for (auto* c : std::initializer_list<juce::Component*> { &load, &clear, &name, &problem, &on })
-        addAndMakeVisible (c);
-    addChildComponent (tone3000);
-}
-
-void FilePanel::setTone3000Available (bool available)
-{
-    tone3000.setVisible (available);
-    resized();
-}
-
-void FilePanel::mouseUp (const juce::MouseEvent& e)
-{
-    if (e.eventComponent == &name && e.mouseWasClicked() && fromTone3000 && onShowTone3000)
-        onShowTone3000();
-}
-
-void FilePanel::show (const juce::File& file, const juce::String& problemText, const rig::Tone3000Source& source)
-{
-    const bool has = file != juce::File();
-    const bool t3k = has && source.valid();
-    if (t3k != fromTone3000)
-    {
-        fromTone3000 = t3k;
-        name.setMouseCursor (t3k ? juce::MouseCursor::PointingHandCursor : juce::MouseCursor::NormalCursor);
-        repaint();   // the T3K mark
-    }
-
-    // A TONE3000 file shows as its tone (the file name is the model's id and name)
-    name.setText (t3k ? source.toneTitle : has ? file.getFileNameWithoutExtension() : emptyText, juce::dontSendNotification);
-    name.setColour (juce::Label::textColourId, has ? ink : fam::dimText);
-    name.setTooltip (t3k ? source.toneTitle + " by " + source.creator + " (TONE3000): click to switch models"
-                         : has ? file.getFullPathName() : juce::String());
-
-    // Under it: a problem if there is one, else a TONE3000 file's model and creator
-    const bool busy = problemText.startsWith ("Loading") || problemText.startsWith ("Downloading");
-    const auto second = problemText.isNotEmpty() ? problemText
-                      : t3k ? source.modelName + "  \xc2\xb7  by " + source.creator : juce::String();
-    problem.setText (second, juce::dontSendNotification);
-    problem.setColour (juce::Label::textColourId, problemText.isEmpty() || busy ? fam::dimText : warning);
-    problem.setTooltip (second);
-    clear.setEnabled (has);
-}
-
-void FilePanel::paint (juce::Graphics& g)
-{
-    drawBox (g, getLocalBounds().toFloat(), title);
-
-    // A TONE3000 file: the T3K mark after the title
-    if (fromTone3000)
-    {
-        const auto mark = tone3000Logos::compact();
-        const float h = 13.0f, w = h * static_cast<float> (mark.getWidth()) / static_cast<float> (mark.getHeight());
-        const float x = 12.0f + juce::GlyphArrangement::getStringWidth (fam::font (15.0f), title) + 10.0f;
-        g.drawImage (mark, juce::Rectangle<float> (x, 8.0f + 10.0f - h * 0.5f, w, h));
-    }
-}
-
-void FilePanel::resized()
-{
-    // The title row spans the whole box (the On switch at its right end);
-    // room for extra controls comes out of what's below it
-    auto b = getLocalBounds().reduced (12, 8);
-    auto top = b.removeFromTop (20);
-    on.setBounds (top.removeFromRight (56));
-    auto buttons = b.removeFromBottom (26);   // the whole width: the extra controls end above it
-    extraArea = b.removeFromRight (extraWidth);
-
-    b.removeFromTop (6);
-    name.setBounds (b.removeFromTop (24));
-    problem.setBounds (b.removeFromTop (30));
-
-    load.setBounds (buttons.removeFromLeft (66));
-    buttons.removeFromLeft (6);
-    if (tone3000.isVisible())
-    {
-        tone3000.setBounds (buttons.removeFromLeft (92));
-        buttons.removeFromLeft (6);
-    }
-    clear.setBounds (buttons.removeFromLeft (28));
-}
-
-//==============================================================================
 RigEditor::RigEditor (RigProcessor& p)
     : AudioProcessorEditor (p),
       rigProcessor (p),
@@ -156,15 +54,12 @@ RigEditor::RigEditor (RigProcessor& p)
       loopReturn (p.apvts, ParamIDs::loopReturn, "Return"),
       loopMix    (p.apvts, ParamIDs::loopMix,    "Mix"),
       output     (p.apvts, ParamIDs::output,     "Level"),
-      ampGain    (p.apvts, ParamIDs::ampGain,    "Gain"),
-      ampLevel   (p.apvts, ParamIDs::ampLevel,   "Level"),
       gateOnAttachment (p.apvts, ParamIDs::gateOn.getParamID(), gateOnButton),
       tunerAttachment (p.apvts, ParamIDs::tuner.getParamID(), tunerButton),
       presetBar (p.getPresets()),
       loopOnAttachment (p.apvts, ParamIDs::loopOn.getParamID(), loopOnButton),
-      ampPanel   ("Amp",       "No capture loaded", p.apvts, ParamIDs::ampOn),
-      powerPanel ("Power amp", "Empty (optional)",  p.apvts, ParamIDs::powerOn),
-      cabPanel   ("Cab",       "No IR loaded",      p.apvts, ParamIDs::cabOn),
+      stripA (p, rig::AmpStage::amp),
+      stripB (p, rig::AmpStage::ampB),
       lastFolder (juce::File::getSpecialLocation (juce::File::userDocumentsDirectory))
 {
     setLookAndFeel (&lookAndFeel);
@@ -187,11 +82,24 @@ RigEditor::RigEditor (RigProcessor& p)
         }
     }
 
-    // Panels first: the amp's knobs sit on top of its panel
-    for (auto* panelComponent : { &ampPanel, &powerPanel, &cabPanel })
-        board.addAndMakeVisible (*panelComponent);
+    // The two amps, each with its cab: files, TONE3000, clear
+    for (auto* strip : { &stripA, &stripB })
+    {
+        const auto stage = strip == &stripA ? rig::AmpStage::amp : rig::AmpStage::ampB;
+        const auto which = strip == &stripA ? rig::Cab::a : rig::Cab::b;
+        strip->amp.onLoad = [this, stage] { chooseAmp (stage); };
+        strip->amp.onClear = [this, stage] { rigProcessor.clearAmp (stage); refreshPanels(); };
+        strip->amp.onTone3000 = [this, stage] { openTone3000 (rig::fileSlot (stage), false); };
+        strip->amp.onShowTone3000 = [this, stage] { openTone3000 (rig::fileSlot (stage), true); };
+        strip->cab.onLoad = [this, which] { chooseCabinet (which); };
+        strip->cab.onClear = [this, which] { rigProcessor.clearCabinet (which); refreshPanels(); };
+        strip->cab.onTone3000 = [this, which] { openTone3000 (rig::fileSlot (which), false); };
+        strip->cab.onShowTone3000 = [this, which] { openTone3000 (rig::fileSlot (which), true); };
+        strip->setPopupParent (&board);
+        board.addAndMakeVisible (*strip);
+    }
 
-    for (auto* knob : { &input, &gateThreshold, &loopSend, &loopReturn, &loopMix, &output, &ampGain, &ampLevel })
+    for (auto* knob : { &input, &gateThreshold, &loopSend, &loopReturn, &loopMix, &output })
     {
         knob->setPopupParent (&board);
         board.addAndMakeVisible (*knob);
@@ -227,25 +135,6 @@ RigEditor::RigEditor (RigProcessor& p)
     pedalsViewButton.onClick = [this] { viewSettings->setStyle (ViewSettings::Style::pedals); };
     slidersViewButton.onClick = [this] { viewSettings->setStyle (ViewSettings::Style::sliders); };
 
-    ampPanel.onLoad    = [this] { chooseAmp (rig::AmpStage::amp); };
-    ampPanel.onClear   = [this] { rigProcessor.clearAmp (rig::AmpStage::amp); refreshPanels(); };
-    powerPanel.onLoad  = [this] { chooseAmp (rig::AmpStage::power); };
-    powerPanel.onClear = [this] { rigProcessor.clearAmp (rig::AmpStage::power); refreshPanels(); };
-    cabPanel.onLoad    = [this] { chooseCabinet(); };
-    cabPanel.onClear   = [this] { rigProcessor.clearCabinet(); refreshPanels(); };
-
-    // TONE3000: the same three slots
-    const std::array<std::pair<FilePanel*, rig::FileSlot>, 3> t3kPanels { { { &ampPanel, rig::FileSlot::amp },
-                                                                            { &powerPanel, rig::FileSlot::power },
-                                                                            { &cabPanel, rig::FileSlot::cab } } };
-    const bool t3kAvailable = rs::t3k::config::clientId().isNotEmpty();
-    for (auto [panelPtr, slotId] : t3kPanels)
-    {
-        panelPtr->setTone3000Available (t3kAvailable);
-        panelPtr->onTone3000 = [this, s = slotId] { openTone3000 (s, false); };
-        panelPtr->onShowTone3000 = [this, s = slotId] { openTone3000 (s, true); };
-    }
-    ampPanel.setExtraWidth (120);   // the amp's Gain and Level
 
 
     // Everything is laid out once at the design size on the board, which is
@@ -292,23 +181,13 @@ void RigEditor::timerCallback()
 
 void RigEditor::refreshPanels()
 {
-    // While a capture loads in the background, show its name
-    auto ampFile = [this] (rig::AmpStage s)
-    {
-        const auto loading = rigProcessor.getLoadingAmpFile (s);
-        return loading != juce::File() ? loading : rigProcessor.getAmpFile (s);
-    };
-    ampPanel.show   (ampFile (rig::AmpStage::amp),   rigProcessor.getAmpProblem (rig::AmpStage::amp),
-                     rigProcessor.getTone3000Source (rig::FileSlot::amp));
-    powerPanel.show (ampFile (rig::AmpStage::power), rigProcessor.getAmpProblem (rig::AmpStage::power),
-                     rigProcessor.getTone3000Source (rig::FileSlot::power));
-    cabPanel.show   (rigProcessor.getCabinetFile(),                  rigProcessor.getCabinetProblem(),
-                     rigProcessor.getTone3000Source (rig::FileSlot::cab));
+    stripA.refresh();
+    stripB.refresh();
 }
 
 void RigEditor::chooseAmp (rig::AmpStage stage)
 {
-    const auto prompt = stage == rig::AmpStage::amp ? "Choose an amp capture" : "Choose a power amp capture";
+    const auto prompt = stage == rig::AmpStage::amp ? "Choose a capture for Amp A" : "Choose a capture for Amp B";
     chooser = std::make_unique<juce::FileChooser> (prompt, lastFolder, "*.nam");
     chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
                           [this, stage] (const juce::FileChooser& fc)
@@ -372,22 +251,23 @@ void RigEditor::chooseSlotCapture (rig::Section s, int i)
                           });
 }
 
-void RigEditor::chooseCabinet()
+void RigEditor::chooseCabinet (rig::Cab which)
 {
-    chooser = std::make_unique<juce::FileChooser> ("Choose a cabinet IR", lastFolder, "*.wav;*.aif;*.aiff");
+    chooser = std::make_unique<juce::FileChooser> (which == rig::Cab::a ? "Choose an IR for Cab A" : "Choose an IR for Cab B",
+                                                   lastFolder, "*.wav;*.aif;*.aiff");
     chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
-                          [this] (const juce::FileChooser& fc)
+                          [this, which] (const juce::FileChooser& fc)
                           {
                               const auto file = fc.getResult();
                               if (file == juce::File())
                                   return;
                               lastFolder = file.getParentDirectory();
 
-                              if (const auto error = rigProcessor.loadCabinet (file); error.isNotEmpty())
+                              if (const auto error = rigProcessor.loadCabinet (file, which); error.isNotEmpty())
                                   juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon,
                                                                           "Couldn't load " + file.getFileName(), error);
                               else
-                                  rigProcessor.forgetTone3000Source (rig::FileSlot::cab);   // a local file now
+                                  rigProcessor.forgetTone3000Source (rig::fileSlot (which));   // a local file now
                               refreshPanels();
                           });
 }
@@ -443,6 +323,10 @@ void RigEditor::paintBoard (juce::Graphics& g)
 
     drawBox (g, inputBox.toFloat(), "Input");
     drawBox (g, outputBox.toFloat(), "Output");
+    drawBox (g, ampsBox.toFloat(), {});
+    // A faint line between the two strips: two paths side by side
+    g.setColour (juce::Colours::black.withAlpha (0.35f));
+    g.fillRect (stripA.getX(), stripA.getBottom(), stripA.getWidth(), 1);
     drawBox (g, loopBox.toFloat(), "Loop");
 
     drawSectionLabel (g, preArea,  "Pre-amp pedals");
@@ -497,9 +381,8 @@ void RigEditor::layoutBoard()
             knob->setBounds (inner.removeFromTop (72));
     }
 
-    // Middle row, in signal order: Input, Amp, Power amp, Cab, Output. Every
-    // box has a title row on top and a buttons row at the bottom, so knobs
-    // sit at the same height in each.
+    // Middle row: Input, the two amps side by side (each strip an amp and its
+    // cab), Output. Every box has a title row on top, so knobs sit level.
     const int gap = 8;
     auto row = ampArea.withTrimmedLeft (-4);   // flush with the pedalboards' left edge
     inputBox = row.removeFromLeft (150);
@@ -522,20 +405,13 @@ void RigEditor::layoutBoard()
     }
     output.setBounds (knobArea (outputBox));
 
-    const int ampW = 320;
-    const int rest = (row.getWidth() - ampW - 2 * gap) / 2;
-    ampPanel.setBounds (row.removeFromLeft (ampW));
-    row.removeFromLeft (gap);
-    powerPanel.setBounds (row.removeFromLeft (rest));
-    row.removeFromLeft (gap);
-    cabPanel.setBounds (row);
-
-    // The amp's knobs sit inside its box, level with the others
+    ampsBox = row;
     {
-        auto extra = ampPanel.getExtraArea().translated (ampPanel.getX(), ampPanel.getY());
-        auto k = extra.withY (knobArea (inputBox).getY()).withHeight (knobArea (inputBox).getHeight());
-        ampGain.setBounds (k.removeFromLeft (k.getWidth() / 2));
-        ampLevel.setBounds (k);
+        // Two equal rows, split by the line between them
+        auto inner = ampsBox.reduced (8, 0);
+        const int h = inner.getHeight() / 2;
+        stripA.setBounds (inner.removeFromTop (h));
+        stripB.setBounds (inner);
     }
 
     tuner.setBounds (ampArea.withTrimmedLeft (-4));   // the row's full width

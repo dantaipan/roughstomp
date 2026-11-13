@@ -7,6 +7,7 @@ set(rig_source ${CMAKE_SOURCE_DIR}/plugins/Rig/Source)
 target_sources(rs-rig-snapshot PRIVATE
     Main.cpp
     ${rig_source}/AmpModel.cpp
+    ${rig_source}/AmpStrip.cpp
     ${rig_source}/CapturePedal.cpp
     ${rig_source}/Presets.cpp
     ${rig_source}/RigEditor.cpp

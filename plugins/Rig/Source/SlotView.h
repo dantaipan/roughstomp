@@ -8,6 +8,14 @@
     hardware pedal (knobs, footswitch) or as plain sliders, as the view
     preference says. Rebuilds itself whenever the slot's pedal or the view
     changes. */
+/** The slider view's menus and On button: the family look, with type the
+    size of the rest of the interface (JUCE's default grows with the height) */
+struct SliderViewLook final : rs::ui::FamilyLookAndFeel
+{
+    juce::Font getComboBoxFont (juce::ComboBox&) override { return rs::ui::family::font (13.0f); }
+    juce::Font getTextButtonFont (juce::TextButton&, int) override { return rs::ui::family::font (13.0f); }
+};
+
 class SlotView final : public juce::Component,
                        public juce::DragAndDropTarget,
                        private juce::ChangeListener
@@ -85,6 +93,7 @@ private:
     // The pedal's own look (its colours), for its controls; declared before
     // them so it outlives them
     std::unique_ptr<rs::ui::PedalLookAndFeel> pedalLook;
+    juce::SharedResourcePointer<SliderViewLook> sliderLook;   // likewise, for the slider view
 
     bool dropHighlight = false;
 

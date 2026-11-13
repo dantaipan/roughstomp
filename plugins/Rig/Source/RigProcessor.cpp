@@ -21,8 +21,9 @@ juce::String fileSlotKey (FileSlot s)
     switch (s.kind)
     {
         case FileSlot::Kind::amp:   return "amp";
-        case FileSlot::Kind::power: return "power";
+        case FileSlot::Kind::ampB:  return "ampB";
         case FileSlot::Kind::cab:   return "cab";
+        case FileSlot::Kind::cabB:  return "cabB";
         case FileSlot::Kind::pedal: break;
     }
     return sectionKey (s.section) + juce::String (s.index + 1);
@@ -31,8 +32,9 @@ juce::String fileSlotKey (FileSlot s)
 std::optional<FileSlot> fileSlotFromKey (const juce::String& key)
 {
     if (key == "amp")   return FileSlot::amp;
-    if (key == "power") return FileSlot::power;
+    if (key == "ampB")  return FileSlot::ampB;
     if (key == "cab")   return FileSlot::cab;
+    if (key == "cabB")  return FileSlot::cabB;
     for (auto s : { Section::pre, Section::loop })
         if (key.startsWith (sectionKey (s)))
         {
@@ -161,8 +163,9 @@ void alignedDry (fx::DelayLine& line, const float* x, float* dry, int n, int lat
 {
     for (int i = 0; i < n; ++i)
     {
-        dry[i] = latency > 0 ? line.readInteger (latency) : x[i];
-        line.write (x[i]);
+        const float in = x[i];   // x and dry may be the same buffer (delaying in place)
+        dry[i] = latency > 0 ? line.readInteger (latency) : in;
+        line.write (in);
     }
 }
 
@@ -198,7 +201,12 @@ RigProcessor::RigProcessor()
     loopReturnDb = raw (ParamIDs::loopReturn);
     loopMix      = raw (ParamIDs::loopMix);
     powerOn      = raw (ParamIDs::powerOn);
+    ampBGainDb   = raw (ParamIDs::ampBGain);
+    ampBLevelDb  = raw (ParamIDs::ampBLevel);
+    ampPanValue  = raw (ParamIDs::ampPan);
+    ampBPanValue = raw (ParamIDs::ampBPan);
     cabOn        = raw (ParamIDs::cabOn);
+    cabBOn       = raw (ParamIDs::cabBOn);
     outputDb     = raw (ParamIDs::output);
     gateOn       = raw (ParamIDs::gateOn);
     gateThresholdDb = raw (ParamIDs::gateThreshold);
@@ -251,8 +259,21 @@ juce::AudioProcessorValueTreeState::ParameterLayout RigProcessor::createLayout()
     layout.add (std::make_unique<AudioParameterFloat> (ParamIDs::loopMix, "Loop Mix", NormalisableRange<float> (0.0f, 100.0f, 1.0f), 100.0f,
                                                        AudioParameterFloatAttributes().withLabel ("%")
                                                            .withStringFromValueFunction ([] (float v, int) { return String (roundToInt (v)) + "%"; })));
-    layout.add (std::make_unique<AudioParameterBool> (ParamIDs::powerOn, "Power Amp On", true));
-    layout.add (std::make_unique<AudioParameterBool> (ParamIDs::cabOn, "Cab On", true));
+    // Amp B: its On keeps the old power amp's ID, so automation of it still loads
+    layout.add (std::make_unique<AudioParameterBool> (ParamIDs::powerOn, "Amp B On", true));
+    addDb (ParamIDs::ampBGain, "Amp B Gain", -24.0f, 24.0f, 0.0f);
+    addDb (ParamIDs::ampBLevel, "Amp B Level", -24.0f, 12.0f, 0.0f);
+    auto pan = [] (float v, int)
+    {
+        const int p = juce::roundToInt (v);
+        return p == 0 ? String ("C") : String (std::abs (p)) + (p < 0 ? " L" : " R");
+    };
+    layout.add (std::make_unique<AudioParameterFloat> (ParamIDs::ampPan, "Amp A Pan", NormalisableRange<float> (-100.0f, 100.0f, 1.0f), 0.0f,
+                                                       AudioParameterFloatAttributes().withStringFromValueFunction (pan)));
+    layout.add (std::make_unique<AudioParameterFloat> (ParamIDs::ampBPan, "Amp B Pan", NormalisableRange<float> (-100.0f, 100.0f, 1.0f), 0.0f,
+                                                       AudioParameterFloatAttributes().withStringFromValueFunction (pan)));
+    layout.add (std::make_unique<AudioParameterBool> (ParamIDs::cabOn, "Cab A On", true));
+    layout.add (std::make_unique<AudioParameterBool> (ParamIDs::cabBOn, "Cab B On", true));
     addDb (ParamIDs::output, "Output", -24.0f, 12.0f, 0.0f);
     layout.add (std::make_unique<AudioParameterBool> (ParamIDs::gateOn, "Gate On", false));
     addDb (ParamIDs::gateThreshold, "Gate Threshold", -90.0f, -20.0f, -60.0f);
@@ -434,7 +455,7 @@ void RigProcessor::updateLatency()
     {
         const std::scoped_lock lock (messageLock);
         total = preChain.getLatencySamples() + loopChain.getLatencySamples()
-                + mainAmp.latency + powerAmp.latency;
+                + std::max (mainAmp.latency, ampBState.latency);   // the shorter amp path waits for the longer
     }
     if (total != getLatencySamples())
         setLatencySamples (total);
@@ -443,10 +464,8 @@ void RigProcessor::updateLatency()
 //==============================================================================
 RigProcessor::BuiltAmps RigProcessor::buildAmps (AmpStage stage, const juce::File& file, double rate, int block)
 {
-    // The power amp runs once per output channel
-    const int copies = stage == AmpStage::power ? 2 : 1;
+    juce::ignoreUnused (stage);
     BuiltAmps built { std::make_unique<Amps>(), {} };
-    for (int c = 0; c < copies; ++c)
     {
         auto result = rig::AmpModel::load (file, rate, block);
         if (result.model == nullptr)
@@ -606,17 +625,20 @@ juce::String RigProcessor::getAmpProblem (AmpStage stage) const
     return a.loadingFile != juce::File() ? juce::String ("Loading...") : a.problem;
 }
 
-juce::String RigProcessor::loadCabinet (const juce::File& file)
+juce::String RigProcessor::loadCabinet (const juce::File& file, rig::Cab which)
 {
     // On failure, keep the path so saving again doesn't lose it, and say why
     auto fail = [&] (const juce::String& why)
     {
         const std::scoped_lock lock (messageLock);
-        cabinetLoaded = false;
-        cabinetSource.setSize (0, 0);
-        cabinetFile = file;
-        cabinetProblem = why;
-        return cabinetProblem;
+        auto& cab = cabState (which);
+        cab.source.setSize (0, 0);
+        cab.file = file;
+        cab.problem = why;
+        cab.loaded = false;
+        if (which == rig::Cab::a)
+            applyCabinet (rig::Cab::b);   // B may have been following A
+        return cab.problem;
     };
 
     if (! file.existsAsFile())
@@ -628,7 +650,7 @@ juce::String RigProcessor::loadCabinet (const juce::File& file)
     if (reader == nullptr || reader->lengthInSamples <= 0 || reader->sampleRate <= 0.0)
         return fail ("It isn't an audio file this can read.");
 
-    // Mono: the first channel, applied to each output channel
+    // Mono: the first channel
     const auto length = static_cast<int> (std::min<juce::int64> (reader->lengthInSamples,
                                                                   static_cast<juce::int64> (reader->sampleRate * longestCabinetSeconds) + 1));
     juce::AudioBuffer<float> ir (1, length);
@@ -645,56 +667,81 @@ juce::String RigProcessor::loadCabinet (const juce::File& file)
     }
 
     const std::scoped_lock lock (messageLock);
-    cabinetSource = std::move (ir);
-    cabinetSourceRate = reader->sampleRate;
-    cabinetFile = file;
-    cabinetProblem = {};
-    applyCabinet();
-    cabinetLoaded = true;
+    auto& cab = cabState (which);
+    cab.source = std::move (ir);
+    cab.sourceRate = reader->sampleRate;
+    cab.file = file;
+    cab.problem = {};
+    applyCabinet (which);
+    if (which == rig::Cab::a)
+        applyCabinet (rig::Cab::b);   // B following A follows the new IR
     return {};
 }
 
-void RigProcessor::applyCabinet()
+void RigProcessor::applyCabinet (rig::Cab which)
 {
-    if (cabinetSource.getNumSamples() == 0)
+    auto& cab = cabState (which);
+    // Cab B with no IR of its own uses A's
+    const auto& from = which == rig::Cab::b && cab.source.getNumSamples() == 0 && cab.file == juce::File() ? cabA : cab;
+    if (from.source.getNumSamples() == 0)
+    {
+        cab.loaded = false;
         return;
+    }
 
-    const auto* src = cabinetSource.getReadPointer (0);
-    const int srcLength = cabinetSource.getNumSamples();
+    const auto* src = from.source.getReadPointer (0);
+    const int srcLength = from.source.getNumSamples();
     juce::AudioBuffer<float> ir;
 
-    if (fx::RateBridge::latencyFor (currentSampleRate, cabinetSourceRate) == 0)
-        ir.makeCopyOf (cabinetSource);
+    if (fx::RateBridge::latencyFor (currentSampleRate, from.sourceRate) == 0)
+        ir.makeCopyOf (from.source);
     else
     {
         fx::RateConverter converter;
-        const auto from = static_cast<std::int64_t> (std::llround (cabinetSourceRate));
+        const auto fromRate = static_cast<std::int64_t> (std::llround (from.sourceRate));
         const auto to = static_cast<std::int64_t> (std::llround (currentSampleRate));
-        const auto tail = static_cast<int> (std::ceil (fx::RateConverter::halfWidth (from, to))) + 2;
-        converter.prepare (from, to, 0, srcLength + tail + 16);
+        const auto tail = static_cast<int> (std::ceil (fx::RateConverter::halfWidth (fromRate, to))) + 2;
+        converter.prepare (fromRate, to, 0, srcLength + tail + 16);
         converter.push (src, srcLength);
         const std::vector<float> silence (static_cast<size_t> (tail), 0.0f);
         converter.push (silence.data(), tail);
 
-        const auto outLength = static_cast<int> (std::ceil (srcLength * currentSampleRate / cabinetSourceRate));
+        const auto outLength = static_cast<int> (std::ceil (srcLength * currentSampleRate / from.sourceRate));
         ir.setSize (1, outLength + 4);
         ir.setSize (1, converter.pull (ir.getWritePointer (0), ir.getNumSamples()), true);
     }
 
     // Already at the right rate and length, so JUCE neither resamples nor trims it
-    cabinet.loadImpulseResponse (std::move (ir), currentSampleRate, juce::dsp::Convolution::Stereo::no,
-                                 juce::dsp::Convolution::Trim::yes, juce::dsp::Convolution::Normalise::yes);
-    cabinetRate = currentSampleRate;
+    cab.convolution.loadImpulseResponse (std::move (ir), currentSampleRate, juce::dsp::Convolution::Stereo::no,
+                                         juce::dsp::Convolution::Trim::yes, juce::dsp::Convolution::Normalise::yes);
+    cab.rate = currentSampleRate;
+    cab.loaded = true;
 }
 
-void RigProcessor::clearCabinet()
+void RigProcessor::clearCabinet (rig::Cab which)
 {
     const std::scoped_lock lock (messageLock);
-    cabinetLoaded = false;
-    cabinetFile = juce::File();
-    cabinetProblem = {};
-    cabinetSource.setSize (0, 0);
-    tone3000Sources.erase (rig::fileSlotKey (rig::FileSlot::cab));
+    auto& cab = cabState (which);
+    cab.file = juce::File();
+    cab.problem = {};
+    cab.source.setSize (0, 0);
+    cab.loaded = false;
+    tone3000Sources.erase (rig::fileSlotKey (rig::fileSlot (which)));
+    // Either way B is re-applied: cleared, it follows A again; A cleared,
+    // a B that was following it goes quiet too
+    applyCabinet (rig::Cab::b);
+}
+
+juce::String RigProcessor::getCabinetProblem (rig::Cab which) const
+{
+    const std::scoped_lock lock (messageLock);
+    return cabState (which).problem;
+}
+
+juce::File RigProcessor::getCabinetFile (rig::Cab which) const
+{
+    const std::scoped_lock lock (messageLock);
+    return cabState (which).file;
 }
 
 //==============================================================================
@@ -722,8 +769,8 @@ void RigProcessor::forgetTone3000Source (rig::FileSlot s)
 
 juce::File RigProcessor::fileOf (rig::FileSlot s) const
 {
-    if (s == rig::FileSlot::cab)
-        return getCabinetFile();
+    if (s == rig::FileSlot::cab || s == rig::FileSlot::cabB)
+        return getCabinetFile (s == rig::FileSlot::cab ? rig::Cab::a : rig::Cab::b);
     if (s.isPedal())
     {
         // One still loading counts: a save meanwhile mustn't lose it
@@ -731,22 +778,22 @@ juce::File RigProcessor::fileOf (rig::FileSlot s) const
         const auto& sl = slot (s.section, s.index);
         return sl.captureLoading != juce::File() ? sl.captureLoading : sl.captureFile;
     }
-    return getAmpFile (s == rig::FileSlot::amp ? AmpStage::amp : AmpStage::power);
+    return getAmpFile (s == rig::FileSlot::amp ? AmpStage::amp : AmpStage::ampB);
 }
 
 void RigProcessor::loadFileInto (rig::FileSlot s, const juce::File& file, bool showNewNow,
                                  std::function<void (const juce::String&)> done)
 {
-    if (s == rig::FileSlot::cab)
+    if (s == rig::FileSlot::cab || s == rig::FileSlot::cabB)
     {
-        const auto error = loadCabinet (file);
+        const auto error = loadCabinet (file, s == rig::FileSlot::cab ? rig::Cab::a : rig::Cab::b);
         if (done)
             done (error);
     }
     else if (s.isPedal())
         loadSlotCapture (s.section, s.index, file, std::move (done));
     else
-        loadAmpAsync (s == rig::FileSlot::amp ? AmpStage::amp : AmpStage::power, file,
+        loadAmpAsync (s == rig::FileSlot::amp ? AmpStage::amp : AmpStage::ampB, file,
                       showNewNow ? AmpLoad::showNewNow : AmpLoad::keepOld, std::move (done));
 }
 
@@ -933,18 +980,22 @@ void RigProcessor::setSlotProblem (rig::FileSlot s, const juce::File& file, cons
             pedal->setCaptures (nullptr);
         return;
     }
-    if (s == rig::FileSlot::cab)
+    if (s == rig::FileSlot::cab || s == rig::FileSlot::cabB)
     {
+        const auto which = s == rig::FileSlot::cab ? rig::Cab::a : rig::Cab::b;
         const std::scoped_lock lock (messageLock);
-        cabinetLoaded = false;
-        cabinetSource.setSize (0, 0);
-        cabinetFile = file;
-        cabinetProblem = problem;
+        auto& cab = cabState (which);
+        cab.source.setSize (0, 0);
+        cab.file = file;
+        cab.problem = problem;
+        cab.loaded = false;
+        if (which == rig::Cab::a)
+            applyCabinet (rig::Cab::b);
         return;
     }
     {
         const std::scoped_lock lock (messageLock);
-        auto& a = amp (s == rig::FileSlot::amp ? AmpStage::amp : AmpStage::power);
+        auto& a = amp (s == rig::FileSlot::amp ? AmpStage::amp : AmpStage::ampB);
         ++a.generation;
         a.handoff.publish (std::make_unique<Amps>());
         a.file = file;
@@ -1020,18 +1071,6 @@ void RigProcessor::retryTone3000Downloads()
         }
 }
 
-juce::String RigProcessor::getCabinetProblem() const
-{
-    const std::scoped_lock lock (messageLock);
-    return cabinetProblem;
-}
-
-juce::File RigProcessor::getCabinetFile() const
-{
-    const std::scoped_lock lock (messageLock);
-    return cabinetFile;
-}
-
 RigProcessor::TunerReading RigProcessor::readTuner()
 {
     double rate;
@@ -1084,7 +1123,7 @@ void RigProcessor::timerCallback()
         preChain.collectGarbage();
         loopChain.collectGarbage();
         mainAmp.handoff.collect();
-        powerAmp.handoff.collect();
+        ampBState.handoff.collect();
         for (auto& row : slots)
             for (auto& sl : row)
                 if (auto* capture = dynamic_cast<CapturePedal*> (sl.pedal.get()))
@@ -1116,7 +1155,7 @@ void RigProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
         preChain.prepare (sampleRate, samplesPerBlock, 1);
         loopChain.prepare (sampleRate, samplesPerBlock, numOut);
 
-        for (auto* a : { &mainAmp, &powerAmp })
+        for (auto* a : { &mainAmp, &ampBState })
         {
             for (auto& m : a->handoff.takeOver().models)
                 m->prepare (sampleRate, samplesPerBlock);
@@ -1129,35 +1168,40 @@ void RigProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     // background thread (too late for an offline render that starts now)
     {
         const std::scoped_lock lock (messageLock);
-        if (! juce::approximatelyEqual (cabinetRate, sampleRate))
-            applyCabinet();
+        for (auto c : { rig::Cab::a, rig::Cab::b })
+            if (! juce::approximatelyEqual (cabState (c).rate, sampleRate))
+                applyCabinet (c);
     }
-    cabinet.prepare ({ sampleRate, static_cast<juce::uint32> (samplesPerBlock), 2 });
+    for (auto* cab : { &cabA, &cabB })
+        cab->convolution.prepare ({ sampleRate, static_cast<juce::uint32> (samplesPerBlock), 1 });   // mono: one per amp
     cabinetGain = cabinetMakeupAt (sampleRate);
 
-    for (auto* g : { &inputGain, &ampGain, &ampLevel, &sendGain, &returnGain, &outputGain })
+    for (auto* g : { &inputGain, &ampGain, &ampLevel, &ampBGain, &ampBLevel, &sendGain, &returnGain, &outputGain, &panA, &panB })
         g->prepare (sampleRate, 0.02);
     mix.prepare (sampleRate, 0.02);
 
     gate.prepare (sampleRate);
     tunerFifo.reset();
 
-    for (auto* b : { &ampBlend, &powerBlend, &cabBlend })
+    for (auto* b : { &ampBlend, &ampBOnGain, &cabBlendA, &cabBlendB })
         b->prepare (sampleRate, 0.02);
     ampBlend.reset (ampOn->load() > 0.5f ? 1.0f : 0.0f);
-    powerBlend.reset (powerOn->load() > 0.5f ? 1.0f : 0.0f);
-    cabBlend.reset (cabOn->load() > 0.5f ? 1.0f : 0.0f);
+    ampBOnGain.reset (powerOn->load() > 0.5f ? 1.0f : 0.0f);
+    cabBlendA.reset (cabOn->load() > 0.5f ? 1.0f : 0.0f);
+    cabBlendB.reset (cabBOn->load() > 0.5f ? 1.0f : 0.0f);
 
-    ampDryLine.prepare (maxAmpLatency);
-    for (auto& l : powerDryLines)
-        l.prepare (maxAmpLatency);
-    ampDry.assign (static_cast<size_t> (samplesPerBlock), 0.0f);
-    for (auto* v : { &powerDry[0], &powerDry[1], &cabDry[0], &cabDry[1] })
+    for (auto* l : { &ampDryLine, &alignA, &alignB })
+        l->prepare (maxAmpLatency + 8);
+    for (auto* v : { &ampDry, &pathB, &pathBOn, &cabDryA, &cabDryB })
         v->assign (static_cast<size_t> (samplesPerBlock), 0.0f);
 
     inputGain.reset (dbToGain (inputDb->load()));
     ampGain.reset (dbToGain (ampGainDb->load()));
     ampLevel.reset (dbToGain (ampLevelDb->load()));
+    ampBGain.reset (dbToGain (ampBGainDb->load()));
+    ampBLevel.reset (dbToGain (ampBLevelDb->load()));
+    panA.reset (ampPanValue->load() / 100.0f);
+    panB.reset (ampBPanValue->load() / 100.0f);
     sendGain.reset (dbToGain (loopSendDb->load()));
     returnGain.reset (dbToGain (loopReturnDb->load()));
     outputGain.reset (tunerOn->load() > 0.5f ? 0.0f : dbToGain (outputDb->load()));
@@ -1241,12 +1285,17 @@ void RigProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuf
     inputGain.setTarget (dbToGain (inputDb->load()));
     ampGain.setTarget (dbToGain (ampGainDb->load()));
     ampLevel.setTarget (dbToGain (ampLevelDb->load()));
+    ampBGain.setTarget (dbToGain (ampBGainDb->load()));
+    ampBLevel.setTarget (dbToGain (ampBLevelDb->load()));
+    panA.setTarget (ampPanValue->load() / 100.0f);
+    panB.setTarget (ampBPanValue->load() / 100.0f);
     sendGain.setTarget (dbToGain (loopSendDb->load()));
     returnGain.setTarget (dbToGain (loopReturnDb->load()));
     outputGain.setTarget (tuning ? 0.0f : dbToGain (outputDb->load()));
     ampBlend.setTarget (ampOn->load() > 0.5f ? 1.0f : 0.0f);
-    powerBlend.setTarget (powerOn->load() > 0.5f ? 1.0f : 0.0f);
-    cabBlend.setTarget (cabOn->load() > 0.5f ? 1.0f : 0.0f);
+    ampBOnGain.setTarget (powerOn->load() > 0.5f ? 1.0f : 0.0f);
+    cabBlendA.setTarget (cabOn->load() > 0.5f ? 1.0f : 0.0f);
+    cabBlendB.setTarget (cabBOn->load() > 0.5f ? 1.0f : 0.0f);
     mix.setTarget (loopOn->load() > 0.5f ? loopMix->load() / 100.0f : 0.0f);
 
     const double blockStart = quarterNotes;
@@ -1269,25 +1318,103 @@ void RigProcessor::processChunk (float* const* ch, int numOut, int n) noexcept
     pushParameters (Section::pre, preChain.beginBlock());
     preChain.process (&mono, 1, n);
 
-    // Amp. On/off crossfades with the dry signal, delayed to match the
+    // Two amps side by side, each into its own cab, then panned into stereo.
+    // Amp A on/off crossfades with the dry signal, delayed to match the
     // model's resampling latency (so the latency never changes and the fade
-    // never comb-filters). The model keeps running while off, so switching
-    // back on doesn't replay stale state.
-    auto& amps = mainAmp.handoff.acquire();
-    if (amps.loaded())
+    // never comb-filters); the model keeps running while off, so switching
+    // back on doesn't replay stale state. Amp B adds to it: off, it fades out.
+    auto& ampsA = mainAmp.handoff.acquire();
+    auto& ampsB = ampBState.handoff.acquire();
+    const bool runB = ampsB.loaded();
+    const int latA = ampsA.loaded() ? ampsA.models.front()->getLatencySamples() : 0;
+    const int latB = runB ? ampsB.models.front()->getLatencySamples() : 0;
+    const int latency = std::min (std::max (latA, latB), maxAmpLatency);
+
+    float* b = pathB.data();
+    float* bOn = pathBOn.data();
+    if (runB)
     {
-        auto& model = *amps.models.front();
-        alignedDry (ampDryLine, mono, ampDry.data(), n, model.getLatencySamples());
+        juce::FloatVectorOperations::copy (b, mono, n);
+        for (int i = 0; i < n; ++i)
+            bOn[i] = ampBOnGain.next();
+    }
+    else
+        ampBOnGain.skip (n);
+
+    // Amp A off (or empty) passes the guitar dry into Cab A, but only while
+    // Amp B isn't playing: switching A off with B on leaves just B
+    auto muteDryUnderB = [&] (float* x)
+    {
+        if (runB)
+            for (int i = 0; i < n; ++i)
+                x[i] *= 1.0f - bOn[i];
+    };
+
+    // Path A: amp, the wait for B's latency, cab
+    if (ampsA.loaded())
+    {
+        auto& model = *ampsA.models.front();
+        alignedDry (ampDryLine, mono, ampDry.data(), n, latA);
+        muteDryUnderB (ampDry.data());
         applyGain (ampGain, &mono, 1, n);
         model.process (mono, n, true);
         applyGain (ampLevel, &mono, 1, n);
         blendWithDry (ampBlend, &mono, std::array { ampDry.data() }.data(), 1, n);
     }
     else
+    {
         ampBlend.skip (n);
+        muteDryUnderB (mono);
+    }
+    if (latency > latA)
+        alignedDry (alignA, mono, mono, n, latency - latA);
 
-    if (numOut > 1)
-        juce::FloatVectorOperations::copy (ch[1], mono, n);
+    auto runCab = [this, n] (CabState& cab, fx::LinearSmoother& blend, float* x, float* dryCopy)
+    {
+        if (! cab.loaded.load())
+            return blend.skip (n);
+        juce::FloatVectorOperations::copy (dryCopy, x, n);
+        float* chans[] { x };
+        juce::dsp::AudioBlock<float> block (chans, 1, static_cast<size_t> (n));
+        cab.convolution.process (juce::dsp::ProcessContextReplacing<float> (block));
+        juce::FloatVectorOperations::multiply (x, cabinetGain, n);
+        blendWithDry (blend, &x, std::array { dryCopy }.data(), 1, n);
+    };
+    runCab (cabA, cabBlendA, mono, cabDryA.data());
+
+    // Path B, the same way (only when it has a capture)
+    if (runB)
+    {
+        auto& model = *ampsB.models.front();
+        applyGain (ampBGain, &b, 1, n);
+        model.process (b, n, true);
+        applyGain (ampBLevel, &b, 1, n);
+        juce::FloatVectorOperations::multiply (b, bOn, n);
+        if (latency > latB)
+            alignedDry (alignB, b, b, n, latency - latB);
+        runCab (cabB, cabBlendB, b, cabDryB.data());
+    }
+    else
+    {
+        ampBGain.skip (n);
+        ampBLevel.skip (n);
+        cabBlendB.skip (n);
+    }
+
+    // Pan both into stereo, balance-style: centred, each side at unity (as a
+    // mono amp copied to both sides always was); panned, the far side fades
+    for (int i = 0; i < n; ++i)
+    {
+        const float pa = panA.next(), pb = panB.next();
+        const float av = mono[i], bv = runB ? b[i] : 0.0f;
+        if (numOut > 1)
+        {
+            ch[0][i] = av * std::min (1.0f, 1.0f - pa) + bv * std::min (1.0f, 1.0f - pb);
+            ch[1][i] = av * std::min (1.0f, 1.0f + pa) + bv * std::min (1.0f, 1.0f + pb);
+        }
+        else
+            ch[0][i] = av + bv;
+    }
 
     // FX loop. The dry path is delayed by the loop pedals' latency so the
     // blend never comb-filters, and so latency stays the same with the loop off.
@@ -1326,37 +1453,6 @@ void RigProcessor::processChunk (float* const* ch, int numOut, int n) noexcept
             ch[c][i] = dry[static_cast<size_t> (c)][static_cast<size_t> (i)] + m * (ch[c][i] - dry[static_cast<size_t> (c)][static_cast<size_t> (i)]);
     }
 
-    // Power amp, one model per channel
-    auto& power = powerAmp.handoff.acquire();
-    if (power.loaded() && static_cast<int> (power.models.size()) >= numOut)
-    {
-        std::array<float*, 2> dryPtrs { powerDry[0].data(), powerDry[1].data() };
-        for (int c = 0; c < numOut; ++c)
-        {
-            auto& model = *power.models[static_cast<size_t> (c)];
-            alignedDry (powerDryLines[static_cast<size_t> (c)], ch[c], dryPtrs[static_cast<size_t> (c)], n, model.getLatencySamples());
-            model.process (ch[c], n, true);
-        }
-        blendWithDry (powerBlend, ch, dryPtrs.data(), numOut, n);
-    }
-    else
-        powerBlend.skip (n);
-
-    // Cabinet (no latency), crossfaded on and off the same way
-    if (cabinetLoaded.load())
-    {
-        std::array<float*, 2> dryPtrs { cabDry[0].data(), cabDry[1].data() };
-        for (int c = 0; c < numOut; ++c)
-            juce::FloatVectorOperations::copy (dryPtrs[static_cast<size_t> (c)], ch[c], n);
-        juce::dsp::AudioBlock<float> block (ch, static_cast<size_t> (numOut), static_cast<size_t> (n));
-        cabinet.process (juce::dsp::ProcessContextReplacing<float> (block));
-        for (int c = 0; c < numOut; ++c)
-            juce::FloatVectorOperations::multiply (ch[c], cabinetGain, n);
-        blendWithDry (cabBlend, ch, dryPtrs.data(), numOut, n);
-    }
-    else
-        cabBlend.skip (n);
-
     applyGain (outputGain, ch, numOut, n);
 }
 
@@ -1374,9 +1470,10 @@ std::unique_ptr<juce::XmlElement> RigProcessor::captureState()
                                  info != nullptr ? juce::String (std::string (info->id)) : juce::String(), nullptr);
         }
 
-    rigTree.setProperty ("ampFile",   getAmpFile (AmpStage::amp).getFullPathName(), nullptr);
-    rigTree.setProperty ("powerFile", getAmpFile (AmpStage::power).getFullPathName(), nullptr);
-    rigTree.setProperty ("cabFile",   getCabinetFile().getFullPathName(), nullptr);
+    rigTree.setProperty ("ampFile",  getAmpFile (AmpStage::amp).getFullPathName(), nullptr);
+    rigTree.setProperty ("ampBFile", getAmpFile (AmpStage::ampB).getFullPathName(), nullptr);
+    rigTree.setProperty ("cabFile",  getCabinetFile (rig::Cab::a).getFullPathName(), nullptr);
+    rigTree.setProperty ("cabBFile", getCabinetFile (rig::Cab::b).getFullPathName(), nullptr);
 
     // Captures in pedal slots
     for (auto s : { Section::pre, Section::loop })
@@ -1425,7 +1522,7 @@ void RigProcessor::restoreState (const juce::XmlElement& xml, Files files)
         return;
 
     auto state = juce::ValueTree::fromXml (xml);
-    const auto rigTree = state.getChildWithName ("Rig").createCopy();
+    auto rigTree = state.getChildWithName ("Rig").createCopy();   // a copy: old sessions are updated in it (the power amp)
     state.removeChild (state.getChildWithName ("Rig"), nullptr);
 
     // Parameters missing from older states keep their defaults rather than
@@ -1452,6 +1549,30 @@ void RigProcessor::restoreState (const juce::XmlElement& xml, Files files)
 
     if (files == Files::keepCurrent)
         return;
+
+    // Sessions from before the dual-amp rig had a power amp after the loop.
+    // There's no place for one now, so its capture moves into the first free
+    // FX loop slot as a NAM Capture (with its TONE3000 source), and nothing is lost
+    if (const auto power = rigTree.getProperty ("powerFile").toString(); power.isNotEmpty() && rigTree.getProperty ("ampBFile").toString().isEmpty())
+        for (int i = 0; i < rig::slotsPerSection; ++i)
+            if (getSlotInfo (Section::loop, i) == nullptr)
+            {
+                setSlotPedal (Section::loop, i, juce::String (std::string (CapturePedal::staticInfo().id)));
+
+                // The slot is on if the power amp was; powerOn is now Amp B's
+                // On, which starts on for when a second amp is loaded
+                auto* onParam = apvts.getParameter (slotOnID (Section::loop, i).getParamID());
+                auto* bOnParam = apvts.getParameter (ParamIDs::powerOn.getParamID());
+                onParam->setValueNotifyingHost (bOnParam->getValue());
+                bOnParam->setValueNotifyingHost (bOnParam->getDefaultValue());
+
+                const auto key = rig::fileSlotKey (rig::FileSlot::pedal (Section::loop, i));
+                rigTree.setProperty (key + "File", power, nullptr);
+                for (auto node : rigTree)
+                    if (node.hasType ("Tone3000") && node.getProperty ("slot").toString() == "power")
+                        node.setProperty ("slot", key, nullptr);
+                break;
+            }
 
     std::map<juce::String, rig::Tone3000Source> sources;
     for (const auto& node : rigTree)
@@ -1505,14 +1626,19 @@ void RigProcessor::restoreState (const juce::XmlElement& xml, Files files)
         }
     };
     restore (AmpStage::amp, rigTree.getProperty ("ampFile").toString());
-    restore (AmpStage::power, rigTree.getProperty ("powerFile").toString());
+    restore (AmpStage::ampB, rigTree.getProperty ("ampBFile").toString());
 
-    if (const auto cab = rigTree.getProperty ("cabFile").toString(); missingTone3000 (rig::FileSlot::cab, cab))
-        ;
-    else if (cab.isNotEmpty())
-        loadCabinet (juce::File (cab));
-    else
-        clearCabinet();
+    // A before B: B with no IR of its own follows A
+    for (auto which : { rig::Cab::a, rig::Cab::b })
+    {
+        const auto cab = rigTree.getProperty (which == rig::Cab::a ? "cabFile" : "cabBFile").toString();
+        if (missingTone3000 (rig::fileSlot (which), cab))
+            continue;
+        if (cab.isNotEmpty())
+            loadCabinet (juce::File (cab), which);
+        else
+            clearCabinet (which);
+    }
 
     // Captures in pedal slots (the pedals themselves were set above)
     for (auto s : { Section::pre, Section::loop })

@@ -31,6 +31,8 @@ juce_add_binary_data(RigTone3000Assets
 target_sources(Rig PRIVATE
     Source/AmpModel.cpp
     Source/AmpModel.h
+    Source/AmpStrip.cpp
+    Source/AmpStrip.h
     Source/CapturePedal.cpp
     Source/CapturePedal.h
     Source/Presets.cpp

@@ -1,14 +1,14 @@
 # RoughStomp — Development Plan
 
-A complete guitar rig built with JUCE, developed in VS Code: pedals before the amp, a NAM amp model, an effects loop before the power amp, and a cabinet IR, in one plugin (VST3/AU) and a standalone app. Load it in RoughTrack (or any DAW) the way you would AmpliTube. Single pedals, starting with the Overdrive, also ship as their own plugins. The DSP lives in a shared library, `fx-core`.
+A complete guitar rig built with JUCE, developed in VS Code: pedals before the amps, one or two NAM amp models each with its cabinet IR, and an effects loop, in one plugin (VST3/AU) and a standalone app. Load it in RoughTrack (or any DAW) the way you would AmpliTube. Single pedals, starting with the Overdrive, also ship as their own plugins. The DSP lives in a shared library, `fx-core`.
 
 ```
-guitar -> [ pre-amp pedals ] -> AMP (NAM) -> [ FX loop pedals ] -> POWER AMP (optional NAM) -> CAB (IR) -> out
-           tuner, wah, drive                  EQ, chorus, delay,    empty by default: most
-                                              reverb                captures include the power amp
+guitar -> [ pre-amp pedals ] -┬-> AMP A (NAM) -> CAB A (IR) -> pan -┬-> [ FX loop pedals ] -> out
+           tuner, wah, drive  └-> AMP B (NAM) -> CAB B (IR) -> pan -┘    EQ, chorus, delay, reverb
+                                  empty by default  "same as A" when empty
 ```
 
-**About the loop position:** a real loop sits between preamp and power amp. Most NAM captures are a whole amp, so by default the loop runs after the amp model, before the cab (what modelling software usually does; modulation and ambience sound right there). For a true split, load a preamp-only capture as the amp and a power-amp capture in the power amp slot.
+**About the loop position:** a real loop sits between preamp and power amp. Most NAM captures are a whole amp, so the loop runs after the amps and their cabs, as studio effects do (modulation and ambience sound right there, and in stereo). Until 0.6 there was a power-amp slot after the loop; sessions that used it get its capture in an FX loop slot instead.
 
 ---
 
@@ -155,7 +155,7 @@ and high drive (fuller, warmer), Asym split 1–1 (very close). Soft now matches
 - [x] Amp: load a NAM capture (ported from RoughTrack, loudness-normalised), input gain, level, on/off
 - [x] Resample to the capture's rate (most are 48 kHz), so a 44.1 kHz session or device still works — fx::RateBridge, windowed sinc, fixed whole-sample latency (66 samples at 44.1 kHz). Cabinet IRs go through the same resampler: JUCE's own let through highs the cab should cut (up to 60 dB too much above 16 kHz)
 - [x] FX loop section: 6 pedal slots; send, return, mix and loop on/off — the dry path is delayed by the loop's latency, so blending never comb-filters
-- [x] Power amp slot: optional second NAM capture after the loop (one instance per stereo side)
+- [x] Power amp slot: optional second NAM capture after the loop (one instance per stereo side). Replaced by Amp B in the dual-amp rig
 - [x] Cab: load an IR (WAV/AIFF), on/off; off when the capture already includes a cab
 - [x] Input and output level; total latency (pedals, plus amp resampling) reported to the host
 - [x] Session state saves pedals, settings and file paths — missing files are reported and their paths kept
@@ -217,8 +217,7 @@ Loose ends from earlier phases, done first:
 - [x] Octave pedal, 2026-11-10: Direct, Oct -1, Oct -2, Oct Up, Range, Vintage/Poly, Tone. Vintage is the analog divider: a 4-pole tracking filter at 160 Hz (so a low string's weak fundamental, not its louder harmonics, makes the zero crossings), a Schmitt trigger relative to a fast envelope, two flip-flops, their squares shaped by the whole guitar's envelope (from the analytic signal, a 90-degree all-pass splitter, so it can fall within 2 ms between notes without rippling; a slow low-end envelope smeared fast passages into a drone); a full-wave rectifier for the octave up. Poly is a filter bank: 22 quarter-octave bands of two complex one-poles (at least 30 Hz wide, so the low ones respond quickly), phase-corrected so bands carrying a note agree, then the square root (kept continuous; a band that drops out restarts from a common point) for the octaves down and the square for the octave up, with smooth gates (absolute and relative) and no per-band decisions. Tone is a low-pass on the octaves down; a +6 dB shelf below 100 Hz and 100% set 4 dB over the dry signal, because the ear needs it down there. Lessons: test on fast passages, not only sustained notes (per-band "is this a note" decisions flickered and dropped notes); measured on a guitar take by tracking its pitch and checking each 10 ms frame for the octave, in tune and present (both modes: no dropouts, Poly 0% and Vintage under 1% of the fast passage out of tune, 4-10 ms to respond)
 - [x] Slider view, 2026-11-12: a Pedals / Sliders switch in the header (a global preference, `ViewSettings`, in ~/Library/Application Support/RoughStomp); in the slider view each slot is a plain family-coloured box with the pedal's colour as a strip, a row per control (name, value, slider), menus, and an On button; the EQ keeps its faders
 - [x] NAM captures in pedal slots, 2026-11-12: "NAM Capture" (`CapturePedal`, in the plugin since it needs NAM): Input, Level, Mix, one model per channel (twice in the loop), its dry path delayed to match its resampling latency so Mix and bypass never comb-filter; loaded in the background (at once when restoring for an offline bounce). `rig::FileSlot` now covers pedal slots too, so files and TONE3000 sources (with re-download) work there as for the amp and cab; the browser offers pedal captures first for a slot. Captures travel with swaps (reloaded across rows)
-- [ ] Stereo or dual-amp rigs
-- [ ] Optional (deferred): circuit-modelled stage (wave digital filters or nodal analysis) as a learning exercise
+- [x] Dual-amp rig, 2026-11-13: Amp A and Amp B side by side (the pre-amp pedals feed both), each into its own cab, panned (balance law: centred is unity on both sides, so a one-amp session sounds exactly as before), then the FX loop, now after the cabs. Amp B replaces the power amp (`powerOn` is now Amp B's On; an old session's power-amp capture moves into the first free loop slot as a NAM Capture, on or off as it was). Cab B empty uses Cab A's IR ("Same as A"). The shorter amp path is delayed to match the longer one's resampling latency; Amp A off passes the guitar dry, unless Amp B is playing. The top row is one box with a strip per amp (`AmpStrip`): an "Amp A" / "Amp B" checkbox (its On), capture, Gain / Level / Pan, then a "Cab" checkbox (`cabOn` is now Cab A's, `cabBOn` Cab B's) and the cab
 - [ ] CLAP format
 
 ---

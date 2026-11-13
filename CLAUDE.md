@@ -1,8 +1,9 @@
 # RoughStomp
 
 A guitar rig plugin (VST3, AU, Standalone) built with JUCE: pre-amp pedals ->
-NAM amp capture -> FX loop -> optional power amp -> cab IR. It's a companion
-to RoughTrack (github.com/dantaipan/roughtrack), where it's used as an insert.
+two NAM amp captures side by side (Amp B optional), each into its own cab IR and
+panned -> FX loop. It's a companion to RoughTrack
+(github.com/dantaipan/roughtrack), where it's used as an insert.
 README.md covers using and building it; PLAN.md is the roadmap and history.
 
 ## Layout

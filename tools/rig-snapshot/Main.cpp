@@ -45,7 +45,7 @@ int main (int argc, char* argv[])
     juce::String toggleParam, asyncAmp;
     int waitMs = 0;
     juce::SharedResourcePointer<ViewSettings> view;   // held for the whole run, so --view lasts
-    juce::String tone3000Open;   // --tone3000=amp|power|cab[:toneId]: open TONE3000's browser   // --wait=SECONDS: pump messages (background loads, TONE3000 downloads) before the picture
+    juce::String tone3000Open;   // --tone3000=amp|ampB|cab|cabB|pre1...[:toneId]: open TONE3000's browser   // --wait=SECONDS: pump messages (background loads, TONE3000 downloads) before the picture
     juce::StringArray presetActions;   // "load:NAME" / "save:NAME", in order
     for (int i = 2; i < argc; ++i)
     {
@@ -303,7 +303,7 @@ int main (int argc, char* argv[])
     {
         juce::MessageManager::getInstance()->runDispatchLoopUntil (waitMs);
         if (auto* rig = dynamic_cast<RigProcessor*> (processor.get()))
-            for (auto s : { rig::AmpStage::amp, rig::AmpStage::power })
+            for (auto s : { rig::AmpStage::amp, rig::AmpStage::ampB })
                 std::cout << rig::fileSlotKey (rig::fileSlot (s)) << ": " << rig->getAmpFile (s).getFileName()
                           << " [" << rig->getAmpProblem (s) << "] tone3000 " << rig->getTone3000Source (rig::fileSlot (s)).toneTitle << "\n";
     }

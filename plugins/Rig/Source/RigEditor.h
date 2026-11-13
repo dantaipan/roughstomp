@@ -1,48 +1,11 @@
 #pragma once
 
+#include "AmpStrip.h"
 #include "Presets.h"
 #include "RigProcessor.h"
 #include "SlotView.h"
 #include "Tone3000Browser.h"
 #include "rs_ui/Pedal.h"
-
-/** A box for something loaded from a file (amp capture, cabinet IR):
-    title, Load/Clear buttons, the file's name, any problem, and an on switch.
-    Drawn like every other box in the row (see drawBox in RigEditor.cpp). */
-class FilePanel final : public juce::Component
-{
-public:
-    FilePanel (const juce::String& title, const juce::String& emptyText,
-               juce::AudioProcessorValueTreeState&, const juce::ParameterID& onParam);
-
-    /** source: where the file came from on TONE3000 (invalid for a local file). */
-    void show (const juce::File&, const juce::String& problem, const rig::Tone3000Source& source = {});
-
-    /** Whether to offer TONE3000 (not in a build without its key). */
-    void setTone3000Available (bool);
-
-    std::function<void()> onLoad, onClear;
-    std::function<void()> onTone3000;       // the TONE3000 button
-    std::function<void()> onShowTone3000;   // clicking a TONE3000 file's name: its tone
-
-    /** Room on the right for extra controls (the amp's knobs). */
-    juce::Rectangle<int> getExtraArea() const noexcept { return extraArea; }
-    void setExtraWidth (int w) { extraWidth = w; resized(); }
-
-    void paint (juce::Graphics&) override;
-    void resized() override;
-    void mouseUp (const juce::MouseEvent&) override;
-
-private:
-    juce::String title, emptyText;
-    juce::TextButton load { "Load..." }, clear { juce::String::fromUTF8 ("\xc3\x97") }, tone3000 { "TONE3000" };
-    bool fromTone3000 = false;
-    juce::Label name, problem;
-    juce::ToggleButton on { "On" };
-    juce::AudioProcessorValueTreeState::ButtonAttachment onAttachment;
-    juce::Rectangle<int> extraArea;
-    int extraWidth = 0;
-};
 
 //==============================================================================
 /** Preset browsing in the header: previous / name (a menu) / next / save. */
@@ -119,7 +82,7 @@ private:
 
     void timerCallback() override;
     void chooseAmp (rig::AmpStage);
-    void chooseCabinet();
+    void chooseCabinet (rig::Cab);
     void chooseSlotCapture (rig::Section, int slot);
     void refreshPanels();
 
@@ -129,7 +92,7 @@ private:
 
     std::array<std::unique_ptr<SlotView>, rig::slotsPerSection> preSlots, loopSlots;
 
-    rs::ui::ConsoleKnob input, gateThreshold, loopSend, loopReturn, loopMix, output, ampGain, ampLevel;
+    rs::ui::ConsoleKnob input, gateThreshold, loopSend, loopReturn, loopMix, output;
     juce::ToggleButton gateOnButton { "Gate" };
     juce::AudioProcessorValueTreeState::ButtonAttachment gateOnAttachment;
     juce::TextButton tunerButton { "Tuner" };
@@ -143,7 +106,8 @@ private:
     juce::ToggleButton loopOnButton { "On" };
     juce::AudioProcessorValueTreeState::ButtonAttachment loopOnAttachment;
 
-    FilePanel ampPanel, powerPanel, cabPanel;
+    // The two amps, side by side in the "Amps" box, each with its cab
+    AmpStrip stripA, stripB;
     std::unique_ptr<Tone3000Browser> tone3000Browser;   // made the first time it's opened
 
 public:
@@ -157,7 +121,7 @@ private:
     juce::File lastFolder;
 
     juce::Rectangle<int> preArea, ampArea, loopArea;
-    juce::Rectangle<int> inputBox, outputBox, loopBox;   // drawn behind their controls
+    juce::Rectangle<int> inputBox, ampsBox, outputBox, loopBox;   // drawn behind their controls
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (RigEditor)
 };
