@@ -253,10 +253,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout RigProcessor::createLayout()
     layout.add (std::make_unique<AudioParameterBool> (ParamIDs::ampOn, "Amp On", true));
     addDb (ParamIDs::ampGain, "Amp Gain", -24.0f, 24.0f, 0.0f);
     addDb (ParamIDs::ampLevel, "Amp Level", -24.0f, 12.0f, 0.0f);
-    layout.add (std::make_unique<AudioParameterBool> (ParamIDs::loopOn, "Loop On", true));
-    addDb (ParamIDs::loopSend, "Loop Send", -24.0f, 12.0f, 0.0f);
-    addDb (ParamIDs::loopReturn, "Loop Return", -24.0f, 12.0f, 0.0f);
-    layout.add (std::make_unique<AudioParameterFloat> (ParamIDs::loopMix, "Loop Mix", NormalisableRange<float> (0.0f, 100.0f, 1.0f), 100.0f,
+    layout.add (std::make_unique<AudioParameterBool> (ParamIDs::loopOn, "Post FX On", true));
+    addDb (ParamIDs::loopSend, "Post FX Send", -24.0f, 12.0f, 0.0f);
+    addDb (ParamIDs::loopReturn, "Post FX Return", -24.0f, 12.0f, 0.0f);
+    layout.add (std::make_unique<AudioParameterFloat> (ParamIDs::loopMix, "Post FX Mix", NormalisableRange<float> (0.0f, 100.0f, 1.0f), 100.0f,
                                                        AudioParameterFloatAttributes().withLabel ("%")
                                                            .withStringFromValueFunction ([] (float v, int) { return String (roundToInt (v)) + "%"; })));
     // Amp B: its On keeps the old power amp's ID, so automation of it still loads
@@ -284,7 +284,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout RigProcessor::createLayout()
     // text shows whatever the current pedal's knob means.
     for (auto s : { Section::pre, Section::loop })
     {
-        const String sectionName = s == Section::pre ? "Pre" : "Loop";
+        const String sectionName = s == Section::pre ? "Pre" : "Post FX";   // IDs stay "loop1_..."
         for (int i = 0; i < rig::slotsPerSection; ++i)
         {
             const String prefix = sectionName + " " + String (i + 1);
@@ -1416,8 +1416,9 @@ void RigProcessor::processChunk (float* const* ch, int numOut, int n) noexcept
             ch[0][i] = av + bv;
     }
 
-    // FX loop. The dry path is delayed by the loop pedals' latency so the
-    // blend never comb-filters, and so latency stays the same with the loop off.
+    // Post FX (once called the FX loop; its IDs still say "loop"). The dry
+    // path is delayed by its pedals' latency so the blend never comb-filters,
+    // and so latency stays the same with it off.
     const auto loopPedals = loopChain.beginBlock();
     pushParameters (Section::loop, loopPedals);
 
@@ -1552,7 +1553,7 @@ void RigProcessor::restoreState (const juce::XmlElement& xml, Files files)
 
     // Sessions from before the dual-amp rig had a power amp after the loop.
     // There's no place for one now, so its capture moves into the first free
-    // FX loop slot as a NAM Capture (with its TONE3000 source), and nothing is lost
+    // post FX slot as a NAM Capture (with its TONE3000 source), and nothing is lost
     if (const auto power = rigTree.getProperty ("powerFile").toString(); power.isNotEmpty() && rigTree.getProperty ("ampBFile").toString().isEmpty())
         for (int i = 0; i < rig::slotsPerSection; ++i)
             if (getSlotInfo (Section::loop, i) == nullptr)

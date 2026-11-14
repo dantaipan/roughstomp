@@ -1,6 +1,6 @@
 # RoughStomp — Development Plan
 
-A complete guitar rig built with JUCE, developed in VS Code: pedals before the amps, one or two NAM amp models each with its cabinet IR, and an effects loop, in one plugin (VST3/AU) and a standalone app. Load it in RoughTrack (or any DAW) the way you would AmpliTube. Single pedals, starting with the Overdrive, also ship as their own plugins. The DSP lives in a shared library, `fx-core`.
+A complete guitar rig built with JUCE, developed in VS Code: pedals before the amps, one or two NAM amp models each with its cabinet IR, and an effects loop, in one plugin (VST3/AU) and a standalone app. Load it in RoughTrack (or any DAW) the way you would AmpliTube. (Single pedals once shipped as their own plugins too, starting with the Overdrive; that was dropped on 2026-11-14, since RoughStomp with one pedal and no amp or cab does the same.) The DSP lives in a shared library, `fx-core`.
 
 ```
 guitar -> [ pre-amp pedals ] -┬-> AMP A (NAM) -> CAB A (IR) -> pan -┬-> [ FX loop pedals ] -> out
@@ -45,9 +45,7 @@ roughstomp/
 │   │       └── ...
 │   └── tests/                 # Catch2 unit tests
 ├── plugins/
-│   ├── Overdrive/             # JUCE plugin wrapper + editor
-│   ├── Pedalboard/            # phase 4
-│   └── ...
+│   └── Rig/                   # RoughStomp: the rig plugin (the only one)
 ├── ui/                        # shared pedal look-and-feel, knobs, footswitch
 ├── presets/
 └── tools/

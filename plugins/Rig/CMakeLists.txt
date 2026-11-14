@@ -1,4 +1,4 @@
-# RoughStomp: the full rig (pre-amp pedals -> NAM amp -> FX loop -> power amp -> cab)
+# RoughStomp: the full rig (pre-amp pedals -> two NAM amps, each into its cab -> post FX)
 juce_add_plugin(Rig
     COMPANY_NAME             "RoughStomp"
     BUNDLE_ID                "com.roughstomp.rig"

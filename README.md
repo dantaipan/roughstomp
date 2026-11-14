@@ -1,24 +1,22 @@
 # RoughStomp
 
-A guitar rig for macOS: pre-amp pedals, one or two [NAM](https://github.com/sdatkinson/NeuralAmpModelerCore) amp captures, each with its cabinet IR, and an effects loop. Use it as a standalone app with your audio interface, or as a VST3/AU plugin, for example as an insert in [RoughTrack](https://github.com/dantaipan/roughtrack), its companion DAW.
+A guitar rig for macOS: pre-amp pedals, one or two [NAM](https://github.com/sdatkinson/NeuralAmpModelerCore) amp captures, each with its cabinet IR, and effects after them. Use it as a standalone app with your audio interface, or as a VST3/AU plugin, for example as an insert in [RoughTrack](https://github.com/dantaipan/roughtrack), its companion DAW.
 
 **[Download RoughStomp for macOS](https://github.com/dantaipan/roughstomp/releases/latest)**: macOS 13 or later, Apple Silicon or Intel, signed and notarized. The disk image has the app and the plugins.
 
-![RoughStomp: the Input-to-Output row on top, then the pre-amp pedals and the effects loop](docs/images/rig.png)
+![RoughStomp: the Input-to-Output row on top, then the pre-amp pedals and the post FX](docs/images/rig.png)
 
 See [PLAN.md](PLAN.md) for the roadmap.
 
-Plugins (VST3, AU and a standalone app each):
-- **RoughStomp**: the full rig. Pre-amp pedals -> NAM amp capture -> cabinet IR (and optionally a second amp and cab beside them, blended or panned) -> FX loop. Load it in RoughTrack or any DAW like AmpliTube (with RoughTrack's own amp off), or run the standalone app with your audio interface.
-- **RoughStomp Overdrive**: the overdrive on its own.
+**RoughStomp** (VST3, AU and a standalone app) is the full rig: pre-amp pedals -> NAM amp capture -> cabinet IR (and optionally a second amp and cab beside them, blended or panned) -> post FX. Load it in RoughTrack or any DAW like AmpliTube (with RoughTrack's own amp off), or run the standalone app with your audio interface. For a single pedal, fill one slot and leave the amps and cabs empty: with no capture or IR loaded, the guitar passes straight through them.
 
 ## Using the rig
 
-- **Pedals:** pick a pedal from the menu above a slot. Footswitch = on/off. Six slots before the amps, six in the FX loop. Any pedal goes in any slot:
+- **Pedals:** pick a pedal from the menu above a slot. Footswitch = on/off. Six slots before the amps, six after them in *Post FX*. Any pedal goes in any slot:
   - *Overdrive*, *Boost*: for in front of the amp
   - *Fuzz* (lower *Bias* for a gated, sputtering sound), *Big Fuzz* (long sustain, scooped tone), *Clean Drive* (keeps the guitar's own sound; *Gain* brings in more grit), *Blues Drive* (touch-sensitive and amp-like, with full lows; cleans up as you play softer)
   - *Octave*: up to three octaves (*Oct -1*, *Oct -2*, *Oct Up*) blended with *Direct*. *Vintage* is an analog-style divider: one note at a time, a solid square-wave sub, at its best on the low strings (chords and fast lines high up the neck confuse it, as they did the originals); *Poly* shifts everything, chords and fast lines included. *Tone* voices the octaves down, from a round, bass-like octave (down) to the whole shifted sound (up). In Poly, *Range* keeps the octave-down to notes below it (turn it down so only the low strings get it)
-  - *NAM Capture*: a capture of a real pedal (or anything) in a slot: *Load...* a `.nam` file or choose one from *TONE3000* (pedal captures first), then *Input* (drive into it), *Level* and *Mix*. Each costs about as much CPU as the amp, twice in the FX loop, where it runs once per stereo side
+  - *NAM Capture*: a capture of a real pedal (or anything) in a slot: *Load...* a `.nam` file or choose one from *TONE3000* (pedal captures first), then *Input* (drive into it), *Level* and *Mix*. Each costs about as much CPU as the amp, twice in Post FX, where it runs once per stereo side
   - *EQ*: 7-band graphic EQ (100 Hz to 6.4 kHz, ±15 dB) and level, on sliders
   - *Chorus*: 1–3 voices, stereo width
   - *Tremolo*: sine, triangle or square; *Spread* pans it across the sides (100% = auto-pan)
@@ -42,17 +40,17 @@ Plugins (VST3, AU and a standalone app each):
 - **Gate:** next to *Input*. Switch it on and turn *Threshold* up until the hiss between notes goes.
 - **Window:** drag the corner to resize (70–150%); sessions remember the size.
 - **Look:** everything around the pedals matches RoughTrack (same colours, buttons, menus, knobs and strobe tuner, from `ui/include/rs_ui/Family.h`); only the pedals look like hardware, on purpose.
-- **Amps:** two amps side by side, A above B, each with its own cab, like a clean and a dirty amp on stage. The pre-amp pedals feed both; each goes through its cab and is panned, then both go through the FX loop:
+- **Amps:** two amps side by side, A above B, each with its own cab, like a clean and a dirty amp on stage. The pre-amp pedals feed both; each goes through its cab and is panned, then both go through the post FX:
 
   ```
-  pre-amp pedals ─┬─ Amp A → Cab A → Pan ─┬─ FX loop → Output
+  pre-amp pedals ─┬─ Amp A → Cab A → Pan ─┬─ Post FX → Output
                   └─ Amp B → Cab B → Pan ─┘
   ```
 
   - *Amp*: *Load...* a `.nam` capture, or choose one from *TONE3000* (below). *Gain* drives the capture, *Level* sets what comes out (captures are levelled to the same loudness automatically), *Pan* places it (centred, it's on both sides at full level; double-click to centre).
   - *Amp B* is empty until you load a second capture, and costs nothing until then. With both centred they blend; pan them apart for a wide stereo rig. The *Amp A* / *Amp B* checkboxes switch each amp: Amp A off sends the guitar straight into Cab A, unless Amp B is playing, in which case you hear just Amp B.
   - *Cab*: *Load...* an IR (WAV/AIFF), or choose one from *TONE3000*. Cab B shows *Same as A* while it's empty, and uses Cab A's IR; load one for a different cab. Each cab's *Cab* checkbox switches it off, for "full rig" captures that already include a cab.
-  - *Sessions from before 0.6* that used the old Power amp slot: its capture moves into the first free FX loop slot as a *NAM Capture* (switched on or off as the power amp was), so nothing is lost. It now comes after the cab.
+  - *Sessions from before 0.6* that used the old Power amp slot: its capture moves into the first free *Post FX* slot as a *NAM Capture* (switched on or off as the power amp was), so nothing is lost. It now comes after the cab.
 - **Sample rate:** any rate works. A capture runs at the rate it was made at (usually 48 kHz); at any other rate it is resampled, which adds about 1.5 ms of latency (reported to the host, so it's compensated). Cabinet IRs are resampled to the session rate too.
 - Sessions remember everything, including the file paths. A missing file is flagged in amber and its path is kept.
 
@@ -150,7 +148,7 @@ $H $P di.wav out.wav Rig.loop1=overdrive loopMix=50 pre1_on=0 input=3
 ```
 
 `id=value` sets a parameter in its own units; `Rig.key=value` sets a rig
-attribute (`ampFile`, `ampBFile`, `cabFile`, `cabBFile`, `pre1`..`pre6`, `loop1`..`loop6`
+attribute (`ampFile`, `ampBFile`, `cabFile`, `cabBFile`, `pre1`..`pre6`, `loop1`..`loop6` (the post FX slots)
 with pedal ids like `overdrive`, `boost`, `eq`, `chorus`, `delay`, `reverb`,
 `tremolo`, `vibrato`, `flanger`, `phaser`, `spring`, `compressor`, `wah`,
 `fuzz`, `bigfuzz`, `cleandrive`, `bluesdrive`, `octave`).
@@ -183,7 +181,7 @@ killall -9 AudioComponentRegistrar
 
 1. F5 with *Debug in AudioPluginHost*
 2. Options → Edit the list of available plug-ins → scan VST3 / AU
-3. Right-click the graph → add *RoughStomp Overdrive*; wire Audio Input → plugin → Audio Output
+3. Right-click the graph → add *RoughStomp*; wire Audio Input → plugin → Audio Output
 4. File → Save the graph as `tools/test.filtergraph` so it reopens next time
 
 Breakpoints in `plugins/` and `fx-core/` hit inside the host.
@@ -196,8 +194,7 @@ Breakpoints in `plugins/` and `fx-core/` hit inside the host.
   - `Pedal.h` — `fx::Pedal` (an effect that describes its own controls) and `fx::registry`
   - `Chain.h`, `Handoff.h` — pedal chains and lock-free message-to-audio handoff
 - `ui/` — shared pedal GUI (`rs::ui`): look-and-feel, knobs, footswitch, LED, mini toggle, enclosure
-- `plugins/Overdrive/` — JUCE wrapper (parameters, presets, state, editor)
-- `plugins/Rig/` — the RoughStomp rig: pedal slots, two NAM amps (`AmpModel`, ported from RoughTrack) with a cab each, loop
+- `plugins/Rig/` — the RoughStomp rig: pedal slots, two NAM amps (`AmpModel`, ported from RoughTrack) with a cab each, post FX
 - `cmake/NAM.cmake` — fetches NeuralAmpModelerCore (MIT), the same version RoughTrack uses
 - `tools/validate.sh` — pluginval runner
 - `tools/render/` — rs-render: fx-core effects over a WAV

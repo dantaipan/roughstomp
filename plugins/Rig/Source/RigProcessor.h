@@ -114,7 +114,7 @@ namespace ParamIDs
 /** The whole rig:
 
       in -> input -> gate -> [pre-amp pedals] -> AMP (NAM) -> to stereo
-         -> FX loop: send -> [loop pedals] -> return, blended with the
+         -> post FX (IDs say "loop"): send -> [pedals] -> return, blended with the
             latency-aligned dry signal by mix
          -> POWER AMP (optional NAM, one per channel) -> CAB (IR) -> output
 

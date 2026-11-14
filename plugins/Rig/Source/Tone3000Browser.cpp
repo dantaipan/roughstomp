@@ -15,7 +15,7 @@ constexpr int headerHeight = 44;
 juce::String slotName (rig::FileSlot s)
 {
     if (s.isPedal())
-        return (s.section == rig::Section::pre ? "the pre-amp slot " : "the FX loop slot ") + juce::String (s.index + 1);
+        return (s.section == rig::Section::pre ? "the pre-amp slot " : "the post FX slot ") + juce::String (s.index + 1);
     return s == rig::FileSlot::amp ? "Amp A" : s == rig::FileSlot::ampB ? "Amp B"
          : s == rig::FileSlot::cab ? "Cab A" : "Cab B";
 }

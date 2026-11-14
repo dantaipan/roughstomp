@@ -10,7 +10,7 @@
 
 /** A NAM capture in a pedal slot (a capture of a real pedal, say): Input
     drives it, Level sets what comes out, Mix blends it with the dry signal.
-    One model per channel it runs on (1 in the pre-amp row, 2 in the loop).
+    One model per channel it runs on (1 in the pre-amp row, 2 in post FX).
     It lives in the plugin rather than fx-core, since it needs NAM.
 
     The models are loaded off the audio thread and handed over with

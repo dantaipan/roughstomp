@@ -104,7 +104,7 @@ RigEditor::RigEditor (RigProcessor& p)
         knob->setPopupParent (&board);
         board.addAndMakeVisible (*knob);
     }
-    loopOnButton.setTooltip ("Switch the whole effects loop on or off");
+    loopOnButton.setTooltip ("Switch all the post FX on or off");
     board.addAndMakeVisible (loopOnButton);
 
     gateOnButton.setTooltip ("Noise gate: silences hiss and hum between notes. GATE sets how quiet counts as silence.");
@@ -327,10 +327,10 @@ void RigEditor::paintBoard (juce::Graphics& g)
     // A faint line between the two strips: two paths side by side
     g.setColour (juce::Colours::black.withAlpha (0.35f));
     g.fillRect (stripA.getX(), stripA.getBottom(), stripA.getWidth(), 1);
-    drawBox (g, loopBox.toFloat(), "Loop");
+    drawBox (g, loopBox.toFloat(), "Post FX");
 
     drawSectionLabel (g, preArea,  "Pre-amp pedals");
-    drawSectionLabel (g, loopArea, "FX loop");
+    drawSectionLabel (g, loopArea, "Post FX");
 }
 
 void RigEditor::layoutBoard()
@@ -370,13 +370,14 @@ void RigEditor::layoutBoard()
     layoutSlots (preArea, preSlots);
     auto loopSide = layoutSlots (loopArea, loopSlots).reduced (4, 0);
 
-    // Loop controls in their box beside the loop pedals: title, On, knobs
+    // Post FX controls in their box beside its pedals: the title, On under
+    // it (the box is too narrow for both on one line), then the knobs
     loopBox = loopSide.withBottom (loopSide.getBottom() + boardOverhang);   // down to the board's bottom edge
     {
         auto inner = loopBox.reduced (8, 8);
-        auto title = inner.removeFromTop (boxTitleHeight).withTrimmedTop (-4);
-        loopOnButton.setBounds (title.removeFromRight (52));
-        inner.removeFromTop (4);
+        inner.removeFromTop (boxTitleHeight - 4);
+        loopOnButton.setBounds (inner.removeFromTop (24).withTrimmedLeft (2).withWidth (60));
+        inner.removeFromTop (2);
         for (auto* knob : { &loopSend, &loopReturn, &loopMix })
             knob->setBounds (inner.removeFromTop (72));
     }

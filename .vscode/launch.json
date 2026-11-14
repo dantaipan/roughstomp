@@ -13,7 +13,7 @@
       "name": "Debug Standalone",
       "type": "lldb",
       "request": "launch",
-      "program": "${workspaceFolder}/build/debug/plugins/Overdrive/Overdrive_artefacts/Debug/Standalone/RoughStomp Overdrive.app/Contents/MacOS/RoughStomp Overdrive",
+      "program": "${workspaceFolder}/build/debug/plugins/Rig/Rig_artefacts/Debug/Standalone/RoughStomp.app/Contents/MacOS/RoughStomp",
       "cwd": "${workspaceFolder}",
       "preLaunchTask": "Build (Debug)"
     },

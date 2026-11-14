@@ -30,7 +30,6 @@ include(cmake/NAM.cmake)
 # Shared pedal GUI (JUCE), then the plugins
 add_subdirectory(ui)
 add_subdirectory(tone3000)
-add_subdirectory(plugins/Overdrive)
 add_subdirectory(plugins/Rig)
 
 # Offline tools

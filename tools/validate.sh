@@ -26,7 +26,7 @@ fi
 status=0
 
 # Target name and product name of every plugin
-PLUGINS=("Overdrive:RoughStomp Overdrive" "Rig:RoughStomp")
+PLUGINS=("Rig:RoughStomp")
 
 for entry in "${PLUGINS[@]}"; do
   TARGET="${entry%%:*}"; PRODUCT="${entry#*:}"

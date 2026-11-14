@@ -2,7 +2,7 @@
 
 A guitar rig plugin (VST3, AU, Standalone) built with JUCE: pre-amp pedals ->
 two NAM amp captures side by side (Amp B optional), each into its own cab IR and
-panned -> FX loop. It's a companion to RoughTrack
+panned -> post FX. It's a companion to RoughTrack
 (github.com/dantaipan/roughtrack), where it's used as an insert.
 README.md covers using and building it; PLAN.md is the roadmap and history.
 
@@ -12,7 +12,8 @@ README.md covers using and building it; PLAN.md is the roadmap and history.
   Catch2 tests, including regression renders (`fx-core/tests/regression`)
 - `ui/`: shared GUI. `rs_ui/Family.h` is the look shared with RoughTrack;
   `rs_ui/Pedal.h` is the pedals' own look
-- `plugins/Rig` (RoughStomp) and `plugins/Overdrive`
+- `plugins/Rig`: RoughStomp, the one plugin (a single pedal is RoughStomp
+  with one slot filled and the amps and cabs empty)
 - `tools/`: `rs-render` (a pedal over a WAV), `rs-host-render` (a built plugin
   over a WAV, through its saved state), `rs-rig-snapshot` (a picture of the
   rig's editor), `validate.sh` (pluginval)
@@ -59,6 +60,10 @@ commit and push here, then bump the pin in RoughTrack and check its
   the full logo before the T3K mark. `rs-t3k` tries the API from the command
   line; `rs-rig-snapshot --tone3000=amp[:trending|:<toneId>] --wait=6`
   pictures the browser (`pre2`, `loop1`... for a capture slot)
+- The second row of pedals is "Post FX" (after the amps and cabs); it was the
+  FX loop, and its code, parameter IDs and state keys still say `loop`
+  (`loop1`, `loop1_k1`, `loopSend`, `Section::loop`). Keep them: sessions,
+  presets and host automation depend on them
 - Pedal slots can hold a NAM capture (`plugins/Rig/Source/CapturePedal`, id
   `nam`, not in fx-core's registry); `Rig.pre1=nam Rig.pre1File=...` sets one
   up in `rs-host-render`/`rs-rig-snapshot`. The slider view is a global
