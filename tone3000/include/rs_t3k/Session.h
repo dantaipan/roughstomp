@@ -1,6 +1,7 @@
 #pragma once
 
 #include <juce_core/juce_core.h>
+#include "rs_t3k/Config.h"
 
 namespace rs::t3k
 {
@@ -42,6 +43,6 @@ public:
 
 private:
     juce::File file;
-    juce::InterProcessLock processLock { "RoughStompTONE3000Session" };
+    juce::InterProcessLock processLock { config::sessionLockName() };
 };
 } // namespace rs::t3k

@@ -4,7 +4,7 @@
 //   rs-t3k login                   device-code sign-in (saves the session)
 //   rs-t3k user                    who's signed in
 //   rs-t3k get <path?query>        any GET under /api/v1, printed as JSON
-//   rs-t3k list <which>            favorited|created|downloaded|trending|latest
+//   rs-t3k list <which> [gear]     favorited|created|downloaded|trending|latest, e.g. gear cab
 //   rs-t3k models <toneId>         the models RoughStomp would offer
 //   rs-t3k download <toneId> <modelId>   into the downloads folder, as the plugin does
 //   rs-t3k browse [nam|ir] [toneId]      TONE3000's picker (load_tone with a tone id)
@@ -110,7 +110,7 @@ int main (int argc, char* argv[])
                                printTone (t);
                            std::cout << "page " << p.page << " of " << p.totalPages << ", " << p.total << " tones\n";
                            wait.done (ok ? 0 : 1);
-                       });
+                       }, false, args.size() > 2 ? args[2] : juce::String());
         return wait.run();
     }
     if (cmd == "models" && args.size() > 1)
@@ -169,7 +169,7 @@ int main (int argc, char* argv[])
         return r.ok() ? 0 : 1;
     }
 
-    std::cout << "Usage: rs-t3k login | user | get <path> | list <which> | models <toneId> | "
+    std::cout << "Usage: rs-t3k login | user | get <path> | list <which> [gear] | models <toneId> | "
                  "download <toneId> <modelId> | browse [nam|ir] [toneId] | logout\n";
     return 1;
 }

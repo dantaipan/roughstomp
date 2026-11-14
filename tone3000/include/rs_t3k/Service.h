@@ -50,7 +50,7 @@ public:
     void user (Reply<User>);
     /** favorited, created, downloaded, trending or latest. Kept for the
         session (fresh = ask again). */
-    void tones (const juce::String& which, int page, Reply<Page<Tone>>, bool fresh = false);
+    void tones (const juce::String& which, int page, Reply<Page<Tone>>, bool fresh = false, const juce::String& gear = {});
     void tone (int id, Reply<Tone>);
     void models (int toneId, Reply<std::vector<Model>>);
     void model (int id, Reply<Model>);

@@ -194,11 +194,21 @@ bool Api::user (User& u, juce::String& error)
     return true;
 }
 
-bool Api::tones (const juce::String& which, int page, int pageSize, Page<Tone>& out, juce::String& error)
+bool Api::tones (const juce::String& which, int page, int pageSize, Page<Tone>& out, juce::String& error,
+                 const juce::String& gear)
 {
-    auto path = "/tones/" + which;
+    // Trending is a fixed short list (no paging); latest takes no filter either
+    juce::StringArray query;
+    if (gear.isNotEmpty() && which != "latest")
+        query.add ("gear=" + juce::URL::addEscapeChars (gear, true));
     if (which != "trending" && which != "latest")
-        path << "?page=" << page << "&page_size=" << juce::jlimit (1, 100, pageSize);
+    {
+        query.add ("page=" + juce::String (page));
+        query.add ("page_size=" + juce::String (juce::jlimit (1, 100, pageSize)));
+    }
+    auto path = "/tones/" + which;
+    if (! query.isEmpty())
+        path << "?" << query.joinIntoString ("&");
     const auto r = get (path);
     if (! r.ok()) { error = describe (r); return false; }
     out = parseTones (r.json());

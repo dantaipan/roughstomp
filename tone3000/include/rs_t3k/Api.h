@@ -44,8 +44,11 @@ public:
     HttpResponse get (const juce::String& pathOrUrl);
 
     bool user (User&, juce::String& error);
-    /** which: favorited, created, downloaded (paginated) or trending, latest. */
-    bool tones (const juce::String& which, int page, int pageSize, Page<Tone>&, juce::String& error);
+    /** which: favorited, created, downloaded (paginated) or trending, latest.
+        gear (e.g. "cab", "amp", "pedal") narrows every list but latest, which
+        takes no filter; empty means everything. */
+    bool tones (const juce::String& which, int page, int pageSize, Page<Tone>&, juce::String& error,
+                const juce::String& gear = {});
     bool tone (int id, Tone&, juce::String& error);
     /** The models RoughStomp can load: A2 if the tone has any, else A1 and
         custom (what the API gives without an architecture); IRs as they are. */

@@ -46,10 +46,15 @@ commit and push here, then bump the pin in RoughTrack and check its
   it when asked
 - TONE3000 (`tone3000/`, `rs::t3k`; the rig's browser is
   `plugins/Rig/Source/Tone3000Browser`): the publishable key lives in
-  `tone3000/client_id.local` (git-ignored; never commit it). The session is
-  `~/Library/Application Support/RoughStomp/TONE3000/session.json`, shared by
-  every process; refresh tokens rotate, so renewing re-reads it under the
-  lock. Ask for A2 models first (the API hides them otherwise). TONE3000's
+  `tone3000/client_id.local` (git-ignored; never commit it). The session and
+  downloads are in `~/Library/Application Support/TONE3000 Shared/`, named for
+  neither app: RoughTrack Swift compiles these sources at a pinned commit and
+  shares the sign-in. Every process uses it; refresh tokens rotate, so renewing
+  re-reads it under the lock, whose name (`RoughStompTONE3000Session`) must
+  never change. `config::folder()` moves RoughStomp's old
+  `RoughStomp/TONE3000` folder in on first use (and leaves a `Downloads` link,
+  since saved presets hold paths into it). The lists take a `gear` filter (cab
+  slots ask for `cab`; Trending is only ten tones). Ask for A2 models first (the API hides them otherwise). TONE3000's
   terms: download only what the user asks for, show "Powered by TONE3000",
   the full logo before the T3K mark. `rs-t3k` tries the API from the command
   line; `rs-rig-snapshot --tone3000=amp[:trending|:<toneId>] --wait=6`

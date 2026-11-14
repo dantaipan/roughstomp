@@ -1,6 +1,7 @@
 # TONE3000 (tone3000.com): sign-in, tone lists, models, downloads and the
-# Select flow, for the rig's Amp, Power amp and Cab slots. JUCE-only (no plugin
-# code) so it can be tested on its own and reused by RoughTrack. An INTERFACE
+# Select flow, for the rig's amp, cab and capture slots. JUCE-only (no plugin
+# code) so it can be tested on its own; RoughTrack Swift compiles it too, at a
+# pinned commit, sharing the sign-in (config::folder()). An INTERFACE
 # library like rs::ui: the sources compile into each target alongside its own
 # JUCE modules.
 add_library(roughstomp_t3k INTERFACE)
@@ -44,6 +45,7 @@ if(ROUGHSTOMP_BUILD_TESTS)
     juce_add_console_app(t3k-tests)
     target_sources(t3k-tests PRIVATE
         tests/ApiTests.cpp
+        tests/ConfigTests.cpp
         tests/PkceTests.cpp
         tests/TypesTests.cpp)
     target_compile_definitions(t3k-tests PRIVATE

@@ -60,12 +60,12 @@ Plugins (VST3, AU and a standalone app each):
 
 **Powered by [TONE3000](https://www.tone3000.com).** The *TONE3000* button next to each amp, cab and capture slot opens TONE3000's library of NAM captures and IRs of real gear, made by a community of musicians:
 
-- **Sign in** once: RoughStomp shows a code to confirm at tone3000.com. Every RoughStomp shares the sign-in (the app, and the plugin in any host). *Sign out* is at the top of the browser.
-- **Your lists**: *Favorites*, *Created* and *Downloaded*, plus what's *Trending* and the *Latest*, showing what the slot can load (captures for the amps, IRs for the cabs).
+- **Sign in** once: RoughStomp shows a code to confirm at tone3000.com. Every RoughStomp shares the sign-in (the app, and the plugin in any host), and so does [RoughTrack](https://github.com/dantaipan/roughtrack): sign in once in either. *Sign out* is at the top of the browser.
+- **Your lists**: *Favorites*, *Created* and *Downloaded*, plus what's *Trending* and the *Latest*, showing what the slot can load (captures for the amps, IRs for the cabs; a cab slot asks TONE3000 for cabs, so its lists aren't mostly empty).
 - **Browse TONE3000** opens TONE3000's own picker in your web browser, for searching the whole catalog; the tone you choose comes back to RoughStomp.
 - **A tone** shows its models (pick one), its description and its licence; *Load* downloads the model and loads it like a file of your own. Respect each tone's licence: it's the creator's.
 - **Loaded**, a slot shows the tone with the T3K mark; click its name to switch to another model of the same tone.
-- Downloads are kept in `~/Library/Application Support/RoughStomp/TONE3000/Downloads`, so sessions and presets reopen offline. On another Mac, or if a file has gone, it's downloaded again once you're signed in.
+- Downloads are kept in `~/Library/Application Support/TONE3000 Shared/Downloads`, with the sign-in, so sessions and presets reopen offline. (Up to 0.6.0 they were in `RoughStomp/TONE3000`; the first time you use this version, they move there, and the old `Downloads` path keeps working.) On another Mac, or if a file has gone, it's downloaded again once you're signed in.
 
 ## First-time setup (macOS)
 

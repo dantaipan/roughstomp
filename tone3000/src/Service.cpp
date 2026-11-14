@@ -221,9 +221,9 @@ void Service::user (Reply<User> reply)
     ask<User> (pool, api, std::move (reply), [] (Api& a, User& u, juce::String& e) { return a.user (u, e); });
 }
 
-void Service::tones (const juce::String& which, int page, Reply<Page<Tone>> reply, bool fresh)
+void Service::tones (const juce::String& which, int page, Reply<Page<Tone>> reply, bool fresh, const juce::String& gear)
 {
-    const auto key = which + "/" + juce::String (page);
+    const auto key = which + "/" + juce::String (page) + "/" + gear;
     {
         const std::scoped_lock lock (cacheLock);
         if (fresh)
@@ -247,7 +247,7 @@ void Service::tones (const juce::String& which, int page, Reply<Page<Tone>> repl
         }
         reply (ok, p, e);
     },
-    [which, page] (Api& a, Page<Tone>& p, juce::String& e) { return a.tones (which, page, 24, p, e); });
+    [which, page, gear] (Api& a, Page<Tone>& p, juce::String& e) { return a.tones (which, page, 24, p, e, gear); });
 }
 
 void Service::tone (int id, Reply<Tone> reply)

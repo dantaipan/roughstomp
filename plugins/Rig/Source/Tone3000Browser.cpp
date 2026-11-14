@@ -380,6 +380,9 @@ private:
         if (p == 1)
             showMessage ("Loading...");
         const auto list = which;
+        // The lists mix every format, and Trending is only ten tones: a cab
+        // slot asks for cabs, or it would usually show none
+        const juce::String gear = format == "ir" ? "cab" : "";
         juce::Component::SafePointer<Library> safe (this);
         service.tones (list, p, [safe, list, p] (bool ok, const rs::t3k::Page<Tone>& result, const juce::String& error)
         {
@@ -391,11 +394,11 @@ private:
             safe->page = p;
             safe->hasMore = result.hasMore();
             for (const auto& t : result.items)
-                if (t.format == safe->format   // the lists don't filter by format: this slot's only
+                if (t.format == safe->format   // this slot's format only (cab gear could include non-IRs)
                     && (! safe->pedalsOnly.getToggleState() || t.gear == "pedal"))
                     safe->addCard (t);
             safe->layoutGrid();
-        }, fresh);
+        }, fresh, gear);
     }
 
     void addCard (const Tone& t)

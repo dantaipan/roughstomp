@@ -280,3 +280,31 @@ TEST_CASE ("Downloads land whole or not at all", "[t3k][api]")
     CHECK_FALSE (target.exists());
     CHECK (error.contains ("internet connection"));
 }
+
+TEST_CASE ("Tone lists: gear and paging combine as each list allows", "[t3k][api]")
+{
+    Fixture f;
+    f.signIn ("A1", "R1", 30 * 60 * 1000);
+    f.http->handler = [] (const HttpRequest&) { return json (200, R"({"data":[],"page":1,"page_size":24,"total":0,"total_pages":0})"); };
+
+    auto pathOf = [&] (const juce::String& which, const juce::String& gear)
+    {
+        Page<Tone> page;
+        juce::String error;
+        f.http->requests.clear();
+        REQUIRE (f.api.tones (which, 2, 24, page, error, gear));
+        REQUIRE (f.http->requests.size() == 1);
+        return f.http->requests[0].url.fromFirstOccurrenceOf ("/api/v1", false, false);
+    };
+
+    // The paged lists
+    CHECK (pathOf ("favorited", {}) == "/tones/favorited?page=2&page_size=24");
+    CHECK (pathOf ("favorited", "cab") == "/tones/favorited?gear=cab&page=2&page_size=24");
+    CHECK (pathOf ("created", "cab") == "/tones/created?gear=cab&page=2&page_size=24");
+    CHECK (pathOf ("downloaded", "cab") == "/tones/downloaded?gear=cab&page=2&page_size=24");
+
+    // Trending: gear, no paging; latest: neither
+    CHECK (pathOf ("trending", {}) == "/tones/trending");
+    CHECK (pathOf ("trending", "cab") == "/tones/trending?gear=cab");
+    CHECK (pathOf ("latest", "cab") == "/tones/latest");
+}
