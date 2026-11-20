@@ -35,7 +35,9 @@ commit and push here, then bump the pin in RoughTrack and check its
   (COPY_PLUGIN_AFTER_BUILD)
 - Before finishing a change: `build/release/fx-core/fx-core-tests`,
   `tools/validate.sh release 10`, and for GUI changes an `rs-rig-snapshot`
-  picture
+  picture. A Release build copies the plugins into ~/Library/Audio/Plug-Ins
+  too, so to compare against an older version, build that commit in a
+  worktree with `-DROUGHSTOMP_COPY_PLUGINS=OFF` (or use its dist DMG)
 - A deliberate change to a pedal's sound needs its regression references
   rewritten (`RS_UPDATE_REGRESSION=1 ... "[regression]"`) and reviewed
 - README screenshots live in `docs/images` and are made with

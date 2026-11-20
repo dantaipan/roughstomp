@@ -2,7 +2,7 @@
 //
 //   rs-rig-snapshot <out.png> [id=value] [Rig.key=value] [--scale=2] [--tone=HZ]
 //                   [--preset=NAME] [--save-preset=NAME] [--swap=pre1,loop3]
-//                   [--toggle=PARAM] [--rate=HZ] [--async-amp=FILE.nam]
+//                   [--toggle=PARAM] [--rate=HZ] [--async-amp=FILE.nam] [--amp-tone=A|B]
 //
 // Settings work as in rs-host-render: id=value sets a parameter in its own
 // units, Rig.key=value an attribute of the <Rig> node (e.g. Rig.loop1=delay).
@@ -12,7 +12,7 @@
 // a user preset; either prints the preset state afterwards. --toggle plays a
 // tone, flips a switch parameter halfway (e.g. ampOn) and prints how big the
 // worst jump at the switch is next to the steady signal (a click shows up as
-// well above 1).
+// well above 1). --amp-tone opens Amp A's or B's tone panel.
 
 #include "Presets.h"
 #include "RigEditor.h"
@@ -44,6 +44,7 @@ int main (int argc, char* argv[])
     double toneHz = 0.0, rate = 48000.0;
     juce::String toggleParam, asyncAmp;
     int waitMs = 0;
+    juce::String ampTone;   // --amp-tone=A|B: open that amp's tone panel
     juce::SharedResourcePointer<ViewSettings> view;   // held for the whole run, so --view lasts
     juce::String tone3000Open;   // --tone3000=amp|ampB|cab|cabB|pre1...[:toneId]: open TONE3000's browser   // --wait=SECONDS: pump messages (background loads, TONE3000 downloads) before the picture
     juce::StringArray presetActions;   // "load:NAME" / "save:NAME", in order
@@ -74,6 +75,11 @@ int main (int argc, char* argv[])
         if (a.startsWith ("--tone3000="))
         {
             tone3000Open = a.fromFirstOccurrenceOf ("=", false, false);
+            continue;
+        }
+        if (a.startsWith ("--amp-tone="))
+        {
+            ampTone = a.fromFirstOccurrenceOf ("=", false, false).toUpperCase();
             continue;
         }
         if (a.startsWith ("--wait="))
@@ -297,6 +303,12 @@ int main (int argc, char* argv[])
             rigEditor->getTone3000Browser()->openTone (slotId, toneId);
         else if (what.isNotEmpty())
             rigEditor->getTone3000Browser()->showList (what);   // e.g. amp:trending
+    }
+
+    if (auto* rigEditor = dynamic_cast<RigEditor*> (editor.get()); rigEditor != nullptr && ampTone.isNotEmpty())
+    {
+        rigEditor->showAmpTone (ampTone == "B" ? rig::AmpStage::ampB : rig::AmpStage::amp);
+        juce::MessageManager::getInstance()->runDispatchLoopUntil (50);   // not longer: a call-out closes after 200 ms when the process is in the background
     }
 
     if (waitMs > 0)

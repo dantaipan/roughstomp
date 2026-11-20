@@ -211,6 +211,14 @@ RigProcessor::RigProcessor()
     gateOn       = raw (ParamIDs::gateOn);
     gateThresholdDb = raw (ParamIDs::gateThreshold);
     tunerOn      = raw (ParamIDs::tuner);
+    for (auto [state, ids] : { std::pair { &toneA, &ParamIDs::toneA }, std::pair { &toneB, &ParamIDs::toneB } })
+    {
+        state->bass    = raw (ids->bass);
+        state->middle  = raw (ids->middle);
+        state->treble  = raw (ids->treble);
+        state->lowCut  = raw (ids->lowCut);
+        state->highCut = raw (ids->highCut);
+    }
 
     for (auto s : { Section::pre, Section::loop })
         for (int i = 0; i < rig::slotsPerSection; ++i)
@@ -279,6 +287,41 @@ juce::AudioProcessorValueTreeState::ParameterLayout RigProcessor::createLayout()
     addDb (ParamIDs::gateThreshold, "Gate Threshold", -90.0f, -20.0f, -60.0f);
     layout.add (std::make_unique<AudioParameterBool> (ParamIDs::tuner, "Tuner", false,
                                                       AudioParameterBoolAttributes().withAutomatable (false)));
+
+    // Tone after each amp and cuts after each cab: flat / off by default, so
+    // sessions from before them sound the same
+    auto hz = [] (float v)
+    {
+        return v >= 1000.0f ? String (v / 1000.0f, v >= 10000.0f ? 1 : 2) + " kHz" : String (roundToInt (v)) + " Hz";
+    };
+    auto addCut = [&] (const ParameterID& id, const String& name, float lo, float hi, float centre, float def, bool offAtLow)
+    {
+        NormalisableRange<float> range (lo, hi);
+        range.setSkewForCentre (centre);
+        layout.add (std::make_unique<AudioParameterFloat> (id, name, range, def,
+            AudioParameterFloatAttributes().withLabel ("Hz")
+                .withStringFromValueFunction ([hz, offAtLow] (float v, int)
+                {
+                    return (offAtLow ? fx::CutFilters::lowCutOff (v) : fx::CutFilters::highCutOff (v)) ? String ("Off") : hz (v);
+                })
+                .withValueFromStringFunction ([lo, hi, offAtLow] (const String& t)
+                {
+                    if (t.trim().equalsIgnoreCase ("off"))
+                        return offAtLow ? lo : hi;
+                    const auto v = t.getFloatValue() * (t.containsIgnoreCase ("k") ? 1000.0f : 1.0f);
+                    return jlimit (lo, hi, v);
+                })));
+    };
+    using fx::CutFilters;
+    for (const auto& [ids, name] : { std::pair { &ParamIDs::toneA, String ("A") }, std::pair { &ParamIDs::toneB, String ("B") } })
+    {
+        const auto range = fx::ToneStack::rangeDb;
+        addDb (ids->bass,   "Amp " + name + " Bass",   -range, range, 0.0f);
+        addDb (ids->middle, "Amp " + name + " Middle", -range, range, 0.0f);
+        addDb (ids->treble, "Amp " + name + " Treble", -range, range, 0.0f);
+        addCut (ids->lowCut,  "Cab " + name + " Low Cut",  CutFilters::lowCutMinHz,  CutFilters::lowCutMaxHz,  100.0f,  CutFilters::lowCutMinHz,  true);
+        addCut (ids->highCut, "Cab " + name + " High Cut", CutFilters::highCutMinHz, CutFilters::highCutMaxHz, 6000.0f, CutFilters::highCutMaxHz, false);
+    }
 
     // Slot controls: generic, because any pedal can sit in any slot. Their
     // text shows whatever the current pedal's knob means.
@@ -1183,6 +1226,15 @@ void RigProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     gate.prepare (sampleRate);
     tunerFifo.reset();
 
+    for (auto* t : { &toneA, &toneB })
+    {
+        t->stack.prepare (sampleRate);
+        t->cuts.prepare (sampleRate);
+        t->setTargets();   // start on the settings, without a glide
+        t->stack.reset();
+        t->cuts.reset();
+    }
+
     for (auto* b : { &ampBlend, &ampBOnGain, &cabBlendA, &cabBlendB })
         b->prepare (sampleRate, 0.02);
     ampBlend.reset (ampOn->load() > 0.5f ? 1.0f : 0.0f);
@@ -1297,6 +1349,8 @@ void RigProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuf
     cabBlendA.setTarget (cabOn->load() > 0.5f ? 1.0f : 0.0f);
     cabBlendB.setTarget (cabBOn->load() > 0.5f ? 1.0f : 0.0f);
     mix.setTarget (loopOn->load() > 0.5f ? loopMix->load() / 100.0f : 0.0f);
+    toneA.setTargets();
+    toneB.setTargets();
 
     const double blockStart = quarterNotes;
     for (int pos = 0; pos < n; pos += maxBlock)
@@ -1359,6 +1413,7 @@ void RigProcessor::processChunk (float* const* ch, int numOut, int n) noexcept
         applyGain (ampGain, &mono, 1, n);
         model.process (mono, n, true);
         applyGain (ampLevel, &mono, 1, n);
+        toneA.stack.process (mono, n);
         blendWithDry (ampBlend, &mono, std::array { ampDry.data() }.data(), 1, n);
     }
     else
@@ -1381,6 +1436,7 @@ void RigProcessor::processChunk (float* const* ch, int numOut, int n) noexcept
         blendWithDry (blend, &x, std::array { dryCopy }.data(), 1, n);
     };
     runCab (cabA, cabBlendA, mono, cabDryA.data());
+    toneA.cuts.process (mono, n);   // after the cab, whether or not it has an IR
 
     // Path B, the same way (only when it has a capture)
     if (runB)
@@ -1389,10 +1445,12 @@ void RigProcessor::processChunk (float* const* ch, int numOut, int n) noexcept
         applyGain (ampBGain, &b, 1, n);
         model.process (b, n, true);
         applyGain (ampBLevel, &b, 1, n);
+        toneB.stack.process (b, n);
         juce::FloatVectorOperations::multiply (b, bOn, n);
         if (latency > latB)
             alignedDry (alignB, b, b, n, latency - latB);
         runCab (cabB, cabBlendB, b, cabDryB.data());
+        toneB.cuts.process (b, n);
     }
     else
     {

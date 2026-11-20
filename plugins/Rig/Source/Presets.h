@@ -8,9 +8,10 @@ class RigProcessor;
 
     - User presets are files (.rsrig, the rig's own state as XML) in
       ~/Library/Application Support/RoughStomp/Presets (or the platform's
-      equivalent). They include the amp, power amp and cab file paths.
+      equivalent). They include the amp and cab file paths.
     - Factory presets are built in. They set pedals and settings but keep the
-      current amp and cab, since they can't know which captures you have.
+      current amps and cabs (with their tone and cuts), since they can't
+      know which captures you have.
 
     Browsing order: factory presets, then user presets by name. */
 class PresetManager

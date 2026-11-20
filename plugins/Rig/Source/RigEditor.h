@@ -114,6 +114,9 @@ public:
     /** Opens TONE3000's browser for a slot; atItsTone opens on the tone the
         slot's file came from (if it did). */
     void openTone3000 (rig::FileSlot, bool atItsTone);
+
+    /** Opens an amp's tone panel (for pictures of it). */
+    void showAmpTone (rig::AmpStage s) { (s == rig::AmpStage::amp ? stripA : stripB).showTone(); }
     Tone3000Browser* getTone3000Browser() noexcept { return tone3000Browser.get(); }
 
 private:

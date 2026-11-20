@@ -65,6 +65,7 @@ if(ROUGHSTOMP_BUILD_TESTS)
         tests/RateBridgeTests.cpp
         tests/RegressionTests.cpp
         tests/SmootherTests.cpp
+        tests/ToneShapingTests.cpp
         tests/WaveshaperTests.cpp
     )
     target_link_libraries(fx-core-tests PRIVATE fx::core fx-warnings Catch2::Catch2WithMain)

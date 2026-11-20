@@ -21,7 +21,7 @@ struct FactoryPreset
 };
 
 // Starting points. Everything not listed is at its default; the amp and cab
-// stay whatever is loaded.
+// stay whatever is loaded, with their tone and cuts.
 const std::vector<FactoryPreset>& factoryPresets()
 {
     static const std::vector<FactoryPreset> presets {
@@ -111,9 +111,11 @@ juce::String PresetManager::load (const Entry& e)
     const auto& preset = factoryPresets()[static_cast<size_t> (e.factoryIndex)];
     auto& apvts = processor.apvts;
 
-    // From a clean board: every parameter at its default, every slot empty
+    // From a clean board: every parameter at its default, every slot empty.
+    // The amps' tone and the cabs' cuts stay, with the captures and IRs they suit
     for (auto* p : processor.getParameters())
-        if (auto* withId = dynamic_cast<juce::AudioProcessorParameterWithID*> (p); withId != nullptr && withId->paramID != ParamIDs::tuner.getParamID())
+        if (auto* withId = dynamic_cast<juce::AudioProcessorParameterWithID*> (p);
+            withId != nullptr && withId->paramID != ParamIDs::tuner.getParamID() && ! ParamIDs::isAmpTone (withId->paramID))
             withId->setValueNotifyingHost (withId->getDefaultValue());
     for (auto s : { rig::Section::pre, rig::Section::loop })
         for (int i = 0; i < rig::slotsPerSection; ++i)

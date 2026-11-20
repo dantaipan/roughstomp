@@ -11,6 +11,7 @@
 #include "fx/NoiseGate.h"
 #include "fx/PitchDetector.h"
 #include "fx/Smoother.h"
+#include "fx/ToneShaping.h"
 
 #include <array>
 #include <atomic>
@@ -109,14 +110,41 @@ namespace ParamIDs
     inline const juce::ParameterID gateOn     { "gateOn",     1 };
     inline const juce::ParameterID gateThreshold { "gateThreshold", 1 };
     inline const juce::ParameterID tuner      { "tuner",      1 };
+
+    // 0.7: tone after each amp, cuts after each cab (default flat / off)
+    inline const juce::ParameterID ampBass     { "ampBass",     2 };
+    inline const juce::ParameterID ampMiddle   { "ampMiddle",   2 };
+    inline const juce::ParameterID ampTreble   { "ampTreble",   2 };
+    inline const juce::ParameterID ampBBass    { "ampBBass",    2 };
+    inline const juce::ParameterID ampBMiddle  { "ampBMiddle",  2 };
+    inline const juce::ParameterID ampBTreble  { "ampBTreble",  2 };
+    inline const juce::ParameterID cabLowCut   { "cabLowCut",   2 };
+    inline const juce::ParameterID cabHighCut  { "cabHighCut",  2 };
+    inline const juce::ParameterID cabBLowCut  { "cabBLowCut",  2 };
+    inline const juce::ParameterID cabBHighCut { "cabBHighCut", 2 };
+
+    /** An amp's tone and its cab's cuts, which belong with the capture and IR
+        (so factory presets, which keep the amp and cab, keep these too). */
+    struct AmpTone { const juce::ParameterID& bass; const juce::ParameterID& middle; const juce::ParameterID& treble;
+                     const juce::ParameterID& lowCut; const juce::ParameterID& highCut; };
+    inline const AmpTone toneA { ampBass,  ampMiddle,  ampTreble,  cabLowCut,  cabHighCut };
+    inline const AmpTone toneB { ampBBass, ampBMiddle, ampBTreble, cabBLowCut, cabBHighCut };
+    inline bool isAmpTone (const juce::String& id)
+    {
+        for (const auto* t : { &toneA, &toneB })
+            for (const auto* p : { &t->bass, &t->middle, &t->treble, &t->lowCut, &t->highCut })
+                if (p->getParamID() == id)
+                    return true;
+        return false;
+    }
 }
 
 /** The whole rig:
 
-      in -> input -> gate -> [pre-amp pedals] -> AMP (NAM) -> to stereo
+      in -> input -> gate -> [pre-amp pedals] -+-> AMP A (NAM) -> tone -> CAB A (IR) -> cuts -> pan -+
+                                               +-> AMP B (NAM) -> tone -> CAB B (IR) -> cuts -> pan -+
          -> post FX (IDs say "loop"): send -> [pedals] -> return, blended with the
-            latency-aligned dry signal by mix
-         -> POWER AMP (optional NAM, one per channel) -> CAB (IR) -> output
+            latency-aligned dry signal by mix -> output
 
     Pedals, amps and the cabinet are swapped on the message thread and handed
     to the audio thread without locks (fx::Handoff, fx::Chain). */
@@ -375,6 +403,25 @@ private:
     std::atomic<float>* gateOn = nullptr;
     std::atomic<float>* gateThresholdDb = nullptr;
     std::atomic<float>* tunerOn = nullptr;
+
+    /** An amp's tone stack and its cab's cuts, with their parameters. */
+    struct ToneState
+    {
+        std::atomic<float>* bass = nullptr;
+        std::atomic<float>* middle = nullptr;
+        std::atomic<float>* treble = nullptr;
+        std::atomic<float>* lowCut = nullptr;
+        std::atomic<float>* highCut = nullptr;
+        fx::ToneStack stack;
+        fx::CutFilters cuts;
+
+        void setTargets() noexcept
+        {
+            stack.setGains (bass->load(), middle->load(), treble->load());
+            cuts.setCutoffs (lowCut->load(), highCut->load());
+        }
+    };
+    ToneState toneA, toneB;
 
     fx::NoiseGate gate;
 

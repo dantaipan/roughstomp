@@ -14,6 +14,7 @@ constexpr int knobWidth = 50;
 constexpr int knobHeight = 58;
 constexpr int buttonsHeight = 22;
 constexpr int fileRowHeight = 40;  // a name over its buttons
+constexpr int toneButtonWidth = 48;
 } // namespace
 
 //==============================================================================
@@ -122,7 +123,10 @@ AmpStrip::AmpStrip (RigProcessor& p, rig::AmpStage s)
     on.setTooltip (s == rig::AmpStage::amp ? "Amp A on (off: the guitar straight into Cab A, or only Amp B when it plays)"
                                            : "Amp B on (off: only Amp A plays)");
     cabOn.setTooltip ("Cab on (off for captures that already include a cab)");
-    for (auto* c : std::initializer_list<juce::Component*> { &on, &amp, &gain, &level, &pan, &cabOn, &cab })
+    tone.setTooltip ("Tone: Bass, Middle and Treble after the amp, low and high cut after the cab");
+    tone.setClickingTogglesState (false);
+    tone.onClick = [this] { showTone(); };
+    for (auto* c : std::initializer_list<juce::Component*> { &on, &amp, &gain, &level, &pan, &tone, &cabOn, &cab })
         addAndMakeVisible (c);
     const bool t3k = rs::t3k::config::clientId().isNotEmpty();
     amp.setTone3000Available (t3k);
@@ -133,8 +137,18 @@ AmpStrip::AmpStrip (RigProcessor& p, rig::AmpStage s)
 
 void AmpStrip::setPopupParent (juce::Component* parent)
 {
+    popupParent = parent;
     for (auto* k : { &gain, &level, &pan })
         k->setPopupParent (parent);
+}
+
+void AmpStrip::showTone()
+{
+    auto* parent = popupParent != nullptr ? popupParent : getParentComponent();
+    auto panel = std::make_unique<TonePanel> (rigProcessor, stage, parent);
+    auto& look = *panel->callOutLook;
+    auto& box = juce::CallOutBox::launchAsynchronously (std::move (panel), parent->getLocalArea (this, tone.getBounds()), parent);
+    box.setLookAndFeel (&look);
 }
 
 void AmpStrip::refresh()
@@ -149,6 +163,8 @@ void AmpStrip::refresh()
     cab.show (rigProcessor.getCabinetFile (which), rigProcessor.getCabinetProblem (which),
               rigProcessor.getTone3000Source (rig::fileSlot (which)),
               isA ? "No IR loaded" : "Same as A");
+
+    tone.setToggleState (! TonePanel::isFlat (rigProcessor, stage), juce::dontSendNotification);
 }
 
 void AmpStrip::paint (juce::Graphics& g)
@@ -173,7 +189,8 @@ void AmpStrip::resized()
     cabOn.setBounds (cabArea.removeFromLeft (cabOnWidth).withSizeKeepingCentre (cabOnWidth, 22));
     cab.setBounds (rowOf (cabArea.withTrimmedRight (4)));
 
-    // Gain / Level / Pan just left of the divider, the capture before them
+    // Gain / Level / Pan and Tone just left of the divider, the capture before them
+    tone.setBounds (b.removeFromRight (toneButtonWidth + 8).withTrimmedRight (8).withSizeKeepingCentre (toneButtonWidth, buttonsHeight));
     auto knobs = b.removeFromRight (knobWidth * 3);
     knobs = knobs.withSizeKeepingCentre (knobs.getWidth(), juce::jmin (knobHeight, knobs.getHeight()))
                  .translated (0, 2);   // the knob leaves a little room under its label: centre what's drawn
@@ -181,4 +198,98 @@ void AmpStrip::resized()
         k->setBounds (knobs.removeFromLeft (knobWidth));
     b.removeFromRight (6);
     amp.setBounds (rowOf (b));
+}
+
+//==============================================================================
+namespace
+{
+constexpr int panelKnobWidth = 58;
+constexpr int panelTitleHeight = 24;
+constexpr int panelGap = 18;   // between the amp's knobs and the cab's
+} // namespace
+
+void CallOutLook::drawCallOutBoxBackground (juce::CallOutBox& box, juce::Graphics& g, const juce::Path& path, juce::Image& cachedImage)
+{
+    if (cachedImage.isNull())
+    {
+        cachedImage = { juce::Image::ARGB, box.getWidth(), box.getHeight(), true };
+        juce::Graphics g2 (cachedImage);
+        juce::DropShadow (juce::Colours::black.withAlpha (0.6f), 10, { 0, 3 }).drawForPath (g2, path);
+    }
+    g.drawImageAt (cachedImage, 0, 0);
+    g.setColour (fam::strip);
+    g.fillPath (path);
+    g.setColour (fam::outline);
+    g.strokePath (path, juce::PathStrokeType (1.5f));
+}
+
+TonePanel::TonePanel (RigProcessor& p, rig::AmpStage s, juce::Component* popupParent)
+    : rigProcessor (p), stage (s),
+      ids (s == rig::AmpStage::amp ? ParamIDs::toneA : ParamIDs::toneB),
+      bass    (p.apvts, ids.bass,    "Bass"),
+      middle  (p.apvts, ids.middle,  "Middle"),
+      treble  (p.apvts, ids.treble,  "Treble"),
+      lowCut  (p.apvts, ids.lowCut,  "Low cut"),
+      highCut (p.apvts, ids.highCut, "High cut")
+{
+    for (auto* k : { &bass, &middle, &treble, &lowCut, &highCut })
+    {
+        // Double-click: back to flat (or off)
+        const auto* param = p.apvts.getParameter (k == &bass ? ids.bass.getParamID() : k == &middle ? ids.middle.getParamID()
+                                                : k == &treble ? ids.treble.getParamID() : k == &lowCut ? ids.lowCut.getParamID()
+                                                : ids.highCut.getParamID());
+        k->slider.setDoubleClickReturnValue (true, param->convertFrom0to1 (param->getDefaultValue()));
+        k->setPopupParent (popupParent);
+        addAndMakeVisible (k);
+    }
+    reset.setTooltip ("Back to flat, with no cuts");
+    reset.onClick = [this]
+    {
+        for (const auto* id : { &ids.bass, &ids.middle, &ids.treble, &ids.lowCut, &ids.highCut })
+            if (auto* param = rigProcessor.apvts.getParameter (id->getParamID()))
+            {
+                param->beginChangeGesture();
+                param->setValueNotifyingHost (param->getDefaultValue());
+                param->endChangeGesture();
+            }
+    };
+    addAndMakeVisible (reset);
+    setSize (panelKnobWidth * 5 + panelGap + 16, panelTitleHeight + 66 + 8);
+}
+
+bool TonePanel::isFlat (RigProcessor& p, rig::AmpStage s)
+{
+    const auto& t = s == rig::AmpStage::amp ? ParamIDs::toneA : ParamIDs::toneB;
+    for (const auto* id : { &t.bass, &t.middle, &t.treble, &t.lowCut, &t.highCut })
+        if (const auto* param = p.apvts.getParameter (id->getParamID());
+            param != nullptr && std::abs (param->getValue() - param->getDefaultValue()) > 1.0e-4f)
+            return false;
+    return true;
+}
+
+void TonePanel::paint (juce::Graphics& g)
+{
+    const bool isA = stage == rig::AmpStage::amp;
+    auto title = getLocalBounds().reduced (8, 0).removeFromTop (panelTitleHeight);
+    g.setFont (fam::font (13.0f));
+    g.setColour (fam::cream);
+    g.drawText (isA ? "Amp A" : "Amp B", title.withWidth (panelKnobWidth * 3).reduced (4, 0), juce::Justification::centredLeft);
+    g.drawText (isA ? "Cab A" : "Cab B", title.withTrimmedLeft (panelKnobWidth * 3 + panelGap).reduced (4, 0), juce::Justification::centredLeft);
+
+    g.setColour (juce::Colours::black.withAlpha (0.35f));
+    g.fillRect (dividerX, panelTitleHeight + 4, 1, getHeight() - panelTitleHeight - 12);
+}
+
+void TonePanel::resized()
+{
+    auto b = getLocalBounds().reduced (8, 0);
+    auto title = b.removeFromTop (panelTitleHeight);
+    reset.setBounds (title.removeFromRight (56).withSizeKeepingCentre (56, 20).translated (0, 2));
+    b.removeFromBottom (8);
+    for (auto* k : { &bass, &middle, &treble })
+        k->setBounds (b.removeFromLeft (panelKnobWidth));
+    dividerX = b.getX() + panelGap / 2;
+    b.removeFromLeft (panelGap);
+    for (auto* k : { &lowCut, &highCut })
+        k->setBounds (b.removeFromLeft (panelKnobWidth));
 }

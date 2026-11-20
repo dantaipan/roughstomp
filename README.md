@@ -33,7 +33,7 @@ See [PLAN.md](PLAN.md) for the roadmap.
   ![The slider view, with a NAM capture in a pre-amp slot](docs/images/sliders.png)
 
   Delay and the modulation pedals have a *Sync* menu that follows the host tempo (120 BPM standalone); while synced, their Time or Rate knob is ignored, and while the host plays, synced modulation lines up with the beat. Delay and the reverbs let their tails ring out when switched off.
-- **Presets:** the bar at the top. Arrows step through presets, the name opens the menu, *Save* saves (over your own preset, or as a new one). Factory presets set pedals and settings but keep your amp and cab; your own presets save everything, including the files. A `*` means you've changed something since loading. They're `.rsrig` files in `~/Library/Application Support/RoughStomp/Presets` (*Show Presets Folder* in the menu).
+- **Presets:** the bar at the top. Arrows step through presets, the name opens the menu, *Save* saves (over your own preset, or as a new one). Factory presets set pedals and settings but keep your amps and cabs (with their tone and cuts); your own presets save everything, including the files. A `*` means you've changed something since loading. They're `.rsrig` files in `~/Library/Application Support/RoughStomp/Presets` (*Show Presets Folder* in the menu).
 - **Tuner:** the *Tuner* button: a strobe, as in RoughTrack (bands drift right when sharp, left when flat, stand still in tune). Mutes the output while it's on.
 
   ![The strobe tuner across the top row](docs/images/tuner.png)
@@ -48,6 +48,7 @@ See [PLAN.md](PLAN.md) for the roadmap.
   ```
 
   - *Amp*: *Load...* a `.nam` capture, or choose one from *TONE3000* (below). *Gain* drives the capture, *Level* sets what comes out (captures are levelled to the same loudness automatically), *Pan* places it (centred, it's on both sides at full level; double-click to centre).
+  - *Tone*: Bass, Middle and Treble after the amp (a capture has no tone controls of its own), and Low cut and High cut after its cab, to take out boom or fizz. Noon is flat and the cuts start off, so they change nothing until you turn them; double-click a knob to put it back, *Reset* for all five. The button lights while any of them is in use.
   - *Amp B* is empty until you load a second capture, and costs nothing until then. With both centred they blend; pan them apart for a wide stereo rig. The *Amp A* / *Amp B* checkboxes switch each amp: Amp A off sends the guitar straight into Cab A, unless Amp B is playing, in which case you hear just Amp B.
   - *Cab*: *Load...* an IR (WAV/AIFF), or choose one from *TONE3000*. Cab B shows *Same as A* while it's empty, and uses Cab A's IR; load one for a different cab. Each cab's *Cab* checkbox switches it off, for "full rig" captures that already include a cab.
   - *Sessions from before 0.6* that used the old Power amp slot: its capture moves into the first free *Post FX* slot as a *NAM Capture* (switched on or off as the power amp was), so nothing is lost. It now comes after the cab.
