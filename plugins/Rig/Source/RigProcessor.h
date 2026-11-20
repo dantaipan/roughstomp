@@ -4,6 +4,7 @@
 #include <juce_dsp/juce_dsp.h>
 
 #include "AmpModel.h"
+#include "MidiControl.h"
 #include "rs_t3k/Types.h"
 #include "fx/Chain.h"
 #include "fx/DelayLine.h"
@@ -168,7 +169,7 @@ public:
 
     // Info
     const juce::String getName() const override { return JucePlugin_Name; }
-    bool acceptsMidi() const override  { return false; }
+    bool acceptsMidi() const override  { return true; }   // CCs move mapped controls, program changes pick presets
     bool producesMidi() const override { return false; }
     bool isMidiEffect() const override { return false; }
     double getTailLengthSeconds() const override { return 0.25; }   // the cabinet's ring
@@ -199,6 +200,7 @@ public:
     bool wasPresetModified() const;
 
     PresetManager& getPresets() noexcept { return *presets; }
+    MidiControl& getMidi() noexcept { return midi; }
 
     // Message thread ----------------------------------------------------------
 
@@ -345,6 +347,7 @@ public:
     juce::AudioProcessorValueTreeState apvts;
 
 private:
+    MidiControl midi { apvts };
     mutable std::mutex messageLock;   // message-side state; the audio thread never takes it
 
     fx::Chain preChain, loopChain;

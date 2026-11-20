@@ -4,7 +4,8 @@
 // muted "to avoid a feedback loop"; a guitar rig should start ready to play, so
 // on first launch the input is unmuted unless it's a microphone (the Mac's
 // built-in one could feed back through the speakers). After that the setting
-// in Options is remembered as usual.
+// in Options is remembered as usual. Every MIDI input is opened (and any
+// plugged in later), so a MIDI foot controller works without a trip to Options.
 
 #include "rs_ui/Family.h"   // first: JUCE's wrapper headers below leave namespace juce open
 
@@ -48,7 +49,8 @@ public:
         mainWindow = std::make_unique<juce::StandaloneFilterWindow> (
             getApplicationName(), rs::ui::family::panel,
             std::make_unique<juce::StandalonePluginHolder> (settings, false, juce::String{}, nullptr,
-                                                            juce::Array<juce::StandalonePluginHolder::PluginInOuts>{}, false));
+                                                            juce::Array<juce::StandalonePluginHolder::PluginInOuts>{},
+                                                            true));   // every MIDI input on, as they're plugged in
 
         if (firstLaunch)
         {

@@ -55,6 +55,17 @@ See [PLAN.md](PLAN.md) for the roadmap.
 - **Sample rate:** any rate works. A capture runs at the rate it was made at (usually 48 kHz); at any other rate it is resampled, which adds about 1.5 ms of latency (reported to the host, so it's compensated). Cabinet IRs are resampled to the session rate too.
 - Sessions remember everything, including the file paths. A missing file is flagged in amber and its path is kept.
 
+## MIDI control
+
+Play the rig from a MIDI foot controller (or any controller):
+
+- **In the standalone app**, every MIDI input is on, including ones you plug in later (*Options* lists them). **In a DAW**, send MIDI to RoughStomp the way your DAW routes it to an effect. (Logic doesn't send MIDI to audio effects; use its controller assignments with RoughStomp's parameters instead.)
+- **Map a control:** click *MIDI* in the header. Every control MIDI can move is outlined, mapped ones with their CC. Click one, then move a knob, fader or footswitch on your controller. Click *MIDI* again when you're done. Right-click a mapped control to forget it.
+- **Footswitches:** a pedal's footswitch, *Amp A*/*Amp B*, *Cab*, *Gate*, *Post FX On* and the *Tuner* can all be mapped. If your footswitch sends a press and a release (momentary), each press flips the switch; if it sends one message per press (latching), the switch follows it. RoughStomp works out which while you map it; right-click to change it (*Flip on each press*).
+- **Expression pedals:** map one to the Wah's *Position*, or to any knob. CC changes take effect at once, as automation does, so a sweep is smooth. A pedal's mappings belong to its slot (the second knob of the second pre-amp slot, say), so they follow whatever pedal is there.
+- **Presets:** a program change loads that preset in the menu's order: program 0 (*1* on many controllers) is the first factory preset; your own come after them, by name.
+- Mappings are a preference, like *Pedals / Sliders*: the same for every RoughStomp (the app, and the plugin in any host), not saved with sessions or presets.
+
 ## TONE3000
 
 **Powered by [TONE3000](https://www.tone3000.com).** The *TONE3000* button next to each amp, cab and capture slot opens TONE3000's library of NAM captures and IRs of real gear, made by a community of musicians:

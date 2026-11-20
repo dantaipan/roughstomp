@@ -42,6 +42,10 @@ public:
 
     bool remove (const Entry&);
 
+    /** Loads the preset at this position in browsing order (a MIDI program
+        change); nothing if there's none there. */
+    void loadIndex (int index);
+
     /** Loads the previous or next preset in browsing order. */
     void step (int delta);
 

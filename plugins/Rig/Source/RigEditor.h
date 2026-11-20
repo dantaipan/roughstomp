@@ -1,6 +1,7 @@
 #pragma once
 
 #include "AmpStrip.h"
+#include "MidiMapView.h"
 #include "Presets.h"
 #include "RigProcessor.h"
 #include "SlotView.h"
@@ -96,6 +97,8 @@ private:
     juce::ToggleButton gateOnButton { "Gate" };
     juce::AudioProcessorValueTreeState::ButtonAttachment gateOnAttachment;
     juce::TextButton tunerButton { "Tuner" };
+    juce::TextButton midiButton { "MIDI" };   // MIDI map mode
+    MidiMapOverlay midiMap;
     juce::TextButton pedalsViewButton { "Pedals" }, slidersViewButton { "Sliders" };   // the view preference
     juce::SharedResourcePointer<ViewSettings> viewSettings;
     juce::AudioProcessorValueTreeState::ButtonAttachment tunerAttachment;
@@ -114,6 +117,9 @@ public:
     /** Opens TONE3000's browser for a slot; atItsTone opens on the tone the
         slot's file came from (if it did). */
     void openTone3000 (rig::FileSlot, bool atItsTone);
+
+    /** MIDI map mode on or off (the MIDI button). */
+    void showMidiMap (bool);
 
     /** Opens an amp's tone panel (for pictures of it). */
     void showAmpTone (rig::AmpStage s) { (s == rig::AmpStage::amp ? stripA : stripB).showTone(); }

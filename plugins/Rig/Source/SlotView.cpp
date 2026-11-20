@@ -1,5 +1,7 @@
 #include "SlotView.h"
 
+#include "MidiMapView.h"
+
 #include "CapturePedal.h"
 #include "Tone3000Browser.h"
 #include "fx/GraphicEq.h"
@@ -246,6 +248,7 @@ void SlotView::rebuild()
                 f.info = &info;
                 if (! sliders)
                     f.slider->setLookAndFeel (pedalLook.get());   // the slider view keeps the family look
+                midimap::tag (*f.slider, id);
                 addAndMakeVisible (*f.slider);
                 faders.push_back (std::move (f));
             }
@@ -278,6 +281,7 @@ void SlotView::rebuild()
                                     juce::dontSendNotification);
                 };
                 r.slider->onValueChange();
+                midimap::tag (*r.slider, id);
                 addAndMakeVisible (*r.slider);
                 rows.push_back (std::move (r));
             }
@@ -287,6 +291,7 @@ void SlotView::rebuild()
                 knob->slider.setDoubleClickReturnValue (true, rig::toNormalised (info, info.defaultValue));
                 knob->setPopupParent (popupParent);
                 knob->setLookAndFeel (pedalLook.get());
+                midimap::tag (*knob, id);
                 addAndMakeVisible (*knob);
                 knobs.push_back (std::move (knob));
             }
@@ -317,6 +322,7 @@ void SlotView::rebuild()
                 };
                 attachment->sendInitialUpdate();
                 box->setLookAndFeel (sliders ? static_cast<juce::LookAndFeel*> (&sliderLook.get()) : pedalLook.get());
+                midimap::tag (*box, id);
                 addAndMakeVisible (*box);
                 choices.push_back (std::move (c));
             }
@@ -329,12 +335,14 @@ void SlotView::rebuild()
             onButton->setTooltip ("On / off");
             onButton->setLookAndFeel (&sliderLook.get());
             onAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (apvts, rig::slotOnID (section, index).getParamID(), *onButton);
+            midimap::tag (*onButton, rig::slotOnID (section, index));
             addAndMakeVisible (*onButton);
         }
         else
         {
             footswitch = std::make_unique<rs::ui::Footswitch> (apvts, rig::slotOnID (section, index));
             footswitch->setTooltip ("On / off");
+            midimap::tag (*footswitch, rig::slotOnID (section, index));
             addAndMakeVisible (*footswitch);
 
             led = std::make_unique<rs::ui::Led> (colours);

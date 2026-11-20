@@ -3,6 +3,7 @@
 //   rs-rig-snapshot <out.png> [id=value] [Rig.key=value] [--scale=2] [--tone=HZ]
 //                   [--preset=NAME] [--save-preset=NAME] [--swap=pre1,loop3]
 //                   [--toggle=PARAM] [--rate=HZ] [--async-amp=FILE.nam] [--amp-tone=A|B]
+//                   [--midi-map[=CC:PARAM[:toggle],...]] [--midi-learn=PARAM]
 //
 // Settings work as in rs-host-render: id=value sets a parameter in its own
 // units, Rig.key=value an attribute of the <Rig> node (e.g. Rig.loop1=delay).
@@ -12,7 +13,9 @@
 // a user preset; either prints the preset state afterwards. --toggle plays a
 // tone, flips a switch parameter halfway (e.g. ampOn) and prints how big the
 // worst jump at the switch is next to the steady signal (a click shows up as
-// well above 1). --amp-tone opens Amp A's or B's tone panel.
+// well above 1). --amp-tone opens Amp A's or B's tone panel. --midi-map shows
+// MIDI map mode, with these mappings instead of the saved ones (which it
+// leaves alone); --midi-learn shows it listening for a control.
 
 #include "Presets.h"
 #include "RigEditor.h"
@@ -45,6 +48,8 @@ int main (int argc, char* argv[])
     juce::String toggleParam, asyncAmp;
     int waitMs = 0;
     juce::String ampTone;   // --amp-tone=A|B: open that amp's tone panel
+    bool midiMap = false;
+    juce::String midiMappings, midiLearn;
     juce::SharedResourcePointer<ViewSettings> view;   // held for the whole run, so --view lasts
     juce::String tone3000Open;   // --tone3000=amp|ampB|cab|cabB|pre1...[:toneId]: open TONE3000's browser   // --wait=SECONDS: pump messages (background loads, TONE3000 downloads) before the picture
     juce::StringArray presetActions;   // "load:NAME" / "save:NAME", in order
@@ -75,6 +80,18 @@ int main (int argc, char* argv[])
         if (a.startsWith ("--tone3000="))
         {
             tone3000Open = a.fromFirstOccurrenceOf ("=", false, false);
+            continue;
+        }
+        if (a == "--midi-map" || a.startsWith ("--midi-map="))
+        {
+            midiMap = true;
+            midiMappings = a.fromFirstOccurrenceOf ("=", false, false);
+            continue;
+        }
+        if (a.startsWith ("--midi-learn="))
+        {
+            midiMap = true;
+            midiLearn = a.fromFirstOccurrenceOf ("=", false, false);
             continue;
         }
         if (a.startsWith ("--amp-tone="))
@@ -303,6 +320,24 @@ int main (int argc, char* argv[])
             rigEditor->getTone3000Browser()->openTone (slotId, toneId);
         else if (what.isNotEmpty())
             rigEditor->getTone3000Browser()->showList (what);   // e.g. amp:trending
+    }
+
+    if (auto* rigEditor = dynamic_cast<RigEditor*> (editor.get()); rigEditor != nullptr && midiMap)
+    {
+        auto& midi = dynamic_cast<RigProcessor*> (processor.get())->getMidi();
+        auto& mappings = midi.getMappings();
+        mappings.setRemembered (false);   // never the user's own
+        for (const auto& m : mappings.get())
+            mappings.forget (m.paramId);
+        for (const auto& item : juce::StringArray::fromTokens (midiMappings, ",", ""))
+        {
+            const auto parts = juce::StringArray::fromTokens (item, ":", "");
+            if (parts.size() >= 2)
+                mappings.assign (parts[0].getIntValue(), parts[1], parts.size() > 2 && parts[2] == "toggle");
+        }
+        if (midiLearn.isNotEmpty())
+            midi.learn (midiLearn);
+        rigEditor->showMidiMap (true);
     }
 
     if (auto* rigEditor = dynamic_cast<RigEditor*> (editor.get()); rigEditor != nullptr && ampTone.isNotEmpty())

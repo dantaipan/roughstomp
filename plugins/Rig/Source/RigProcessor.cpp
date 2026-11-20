@@ -1161,6 +1161,11 @@ void RigProcessor::timerCallback()
     if (++ticks % 20 == 0 && presets != nullptr)
         presets->noteModifiedState();
 
+    // MIDI: a program change picks a preset (in the menu's order); MIDI Learn
+    if (const int program = midi.takeProgramChange(); program >= 0 && presets != nullptr)
+        presets->loadIndex (program);
+    midi.poll();
+
     {
         const std::scoped_lock lock (messageLock);
         preChain.collectGarbage();
@@ -1288,9 +1293,13 @@ void RigProcessor::pushParameters (Section s, std::span<fx::Pedal* const> pedals
     }
 }
 
-void RigProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
+void RigProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
 {
     juce::ScopedNoDenormals noDenormals;
+
+    // MIDI first: mapped CCs set their parameters, read below
+    midi.process (midiMessages);
+    midiMessages.clear();
 
     const int numIn = getTotalNumInputChannels();
     const int numOut = juce::jlimit (1, 2, getTotalNumOutputChannels());

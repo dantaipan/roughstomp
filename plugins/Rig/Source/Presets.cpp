@@ -185,6 +185,13 @@ bool PresetManager::remove (const Entry& e)
     return true;
 }
 
+void PresetManager::loadIndex (int index)
+{
+    const auto entries = list();
+    if (index >= 0 && index < static_cast<int> (entries.size()))
+        load (entries[static_cast<size_t> (index)]);
+}
+
 void PresetManager::step (int delta)
 {
     const auto entries = list();

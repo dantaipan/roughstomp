@@ -1,5 +1,6 @@
 #include "AmpStrip.h"
 
+#include "MidiMapView.h"
 #include "Tone3000Browser.h"
 
 #include <rs_t3k/Config.h>
@@ -132,6 +133,12 @@ AmpStrip::AmpStrip (RigProcessor& p, rig::AmpStage s)
     amp.setTone3000Available (t3k);
     cab.setTone3000Available (t3k);
     pan.slider.setDoubleClickReturnValue (true, 0.5);   // centre
+    const bool isA = s == rig::AmpStage::amp;
+    midimap::tag (on,    isA ? ParamIDs::ampOn : ParamIDs::powerOn);
+    midimap::tag (cabOn, isA ? ParamIDs::cabOn : ParamIDs::cabBOn);
+    midimap::tag (gain,  isA ? ParamIDs::ampGain : ParamIDs::ampBGain);
+    midimap::tag (level, isA ? ParamIDs::ampLevel : ParamIDs::ampBLevel);
+    midimap::tag (pan,   isA ? ParamIDs::ampPan : ParamIDs::ampBPan);
     refresh();
 }
 

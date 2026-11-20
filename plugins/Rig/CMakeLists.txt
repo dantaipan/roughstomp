@@ -7,7 +7,7 @@ juce_add_plugin(Rig
     FORMATS                  VST3 AU Standalone
     PRODUCT_NAME             "RoughStomp"
     IS_SYNTH                 FALSE
-    NEEDS_MIDI_INPUT         FALSE
+    NEEDS_MIDI_INPUT         TRUE    # MIDI control; AU_MAIN_TYPE keeps the AU an effect (aufx)
     NEEDS_MIDI_OUTPUT        FALSE
     IS_MIDI_EFFECT           FALSE
     EDITOR_WANTS_KEYBOARD_FOCUS FALSE
@@ -35,6 +35,10 @@ target_sources(Rig PRIVATE
     Source/AmpStrip.h
     Source/CapturePedal.cpp
     Source/CapturePedal.h
+    Source/MidiControl.cpp
+    Source/MidiControl.h
+    Source/MidiMapView.cpp
+    Source/MidiMapView.h
     Source/Presets.cpp
     Source/Presets.h
     Source/RigEditor.cpp

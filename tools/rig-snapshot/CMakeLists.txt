@@ -9,6 +9,8 @@ target_sources(rs-rig-snapshot PRIVATE
     ${rig_source}/AmpModel.cpp
     ${rig_source}/AmpStrip.cpp
     ${rig_source}/CapturePedal.cpp
+    ${rig_source}/MidiControl.cpp
+    ${rig_source}/MidiMapView.cpp
     ${rig_source}/Presets.cpp
     ${rig_source}/RigEditor.cpp
     ${rig_source}/RigProcessor.cpp

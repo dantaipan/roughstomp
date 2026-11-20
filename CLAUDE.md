@@ -34,6 +34,7 @@ commit and push here, then bump the pin in RoughTrack and check its
   Debug drops out, and a Debug build also overwrites the installed plugins
   (COPY_PLUGIN_AFTER_BUILD)
 - Before finishing a change: `build/release/fx-core/fx-core-tests`,
+  `build/release/plugins/Rig/tests/rig-tests_artefacts/Release/rig-tests`,
   `tools/validate.sh release 10`, and for GUI changes an `rs-rig-snapshot`
   picture. A Release build copies the plugins into ~/Library/Audio/Plug-Ins
   too, so to compare against an older version, build that commit in a
@@ -71,6 +72,12 @@ commit and push here, then bump the pin in RoughTrack and check its
   up in `rs-host-render`/`rs-rig-snapshot`. The slider view is a global
   preference (`ViewSettings`); `rs-rig-snapshot --view=sliders` pictures it
   without changing the saved preference
+- MIDI: mapped CCs move parameters on the audio thread; program changes
+  load presets in the menu's order. Mappings (`MidiMappings`) are a global
+  preference in `RoughStomp.settings`, not session state: tests and
+  `rs-rig-snapshot --midi-map` use `setRemembered (false)` so they never
+  touch the user's. A control the MIDI map should offer is tagged with
+  `midimap::tag (component, paramId)`
 - Branding is "RoughStomp" (manufacturer code Rstm, bundle IDs com.roughstomp.*)
 - fx-core and the NAM library are built with hidden symbols so the plugin can
   load inside RoughTrack, which has its own copy of NAM; keep it that way

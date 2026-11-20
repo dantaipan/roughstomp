@@ -40,17 +40,19 @@ A NAM capture has no tone controls of its own, so today shaping one costs an EQ 
 - [x] Tone stack per amp: Bass, Middle, Treble after the capture (`fx::ToneStack` in `fx/ToneShaping.h`: low shelf 120 Hz, mid peak 650 Hz, high shelf 2.8 kHz, +-12 dB). Flat, it stands aside, so existing sessions render bit-identical to 0.6.2 (checked against a 0.6.2 build: amp, full rig, both amps panned)
 - [x] Low cut (20–500 Hz) and high cut (1.5–20 kHz) per cab, after the IR, 12 dB/octave (`fx::CutFilters`); fully down / fully up is off; switching fades
 - [x] A *Tone* button on each amp strip (lit while anything isn't flat) opens a call-out: Bass / Middle / Treble | Low cut / High cut, Reset. Parameters `ampBass`, `ampMiddle`, `ampTreble`, `ampBBass`..., `cabLowCut`, `cabHighCut`, `cabBLowCut`, `cabBHighCut` (version hint 2), flat/off by default. Factory presets keep them, with the amp and cab
-- [x] Tests (`[tone]` in fx-core-tests), pluginval, `rs-rig-snapshot --amp-tone=A`, README
+- [x] Tests (`[tone]` in fx-core-tests and rig-tests), pluginval, `rs-rig-snapshot --amp-tone=A`, README
 - Lesson: a host's "0 dB" can come back from its normalised form as 2e-7 (`-12 + 0.1 * 120` in float), which kept the "flat" stack running and moved the output by a float step. Anything that stands aside at a value needs a tolerance
 
 ### 8b. MIDI control
 
 Live use, mostly in the standalone app, where nothing else can switch presets or footswitches.
 
-- [ ] Take MIDI in: the VST3 gets an event input, the AU stays an effect (`aufx`), the standalone app offers MIDI inputs in Options
-- [ ] Program change selects a preset, in the preset menu's order
-- [ ] MIDI Learn on knobs, footswitches and switches. Mappings are a global preference, like the slider view, since your controller is the same in every session. CC reaches the audio thread's parameters without locks, so an expression pedal on the Wah stays smooth
-- [ ] Tests for the mapping and program change; README
+- [x] Take MIDI in: the VST3 gets an event input, the AU stays an effect (`aufx`; auval passes), the standalone app opens every MIDI input, and any plugged in later
+- [x] Program change selects a preset, in the preset menu's order (`PresetManager::loadIndex`, from the processor's timer)
+- [x] MIDI map mode (`MidiMapOverlay`): a *MIDI* button in the header covers the board; every control MIDI can move (tagged with `midimap::tag`) is outlined, mapped ones with their CC; click one, move a controller. Right-click: forget, or flip-on-each-press for a switch. A mode rather than right-click menus on the controls, since JUCE's buttons react to right-clicks and linear sliders jump to them
+- [x] Mappings (`MidiMappings`) are a global preference in RoughStomp.settings, like the slider view. CCs are applied on the audio thread with `setValueNotifyingHost` (no gestures), as host automation is, so an expression pedal is smooth. Learning a switch tells a momentary footswitch (press and release within 400 ms: flip on each press) from a latching one (follow the CC)
+- [x] `rig-tests` (Catch2 over the plugin's sources, mappings never saved); `rs-rig-snapshot --midi-map=CC:PARAM[:toggle],... --midi-learn=PARAM`; README
+- [ ] Later, if wanted: next/previous preset on a CC, for controllers that only send CCs; the tone panel's knobs in the map
 
 ### 8c. Before 1.0
 

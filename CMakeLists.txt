@@ -31,6 +31,9 @@ include(cmake/NAM.cmake)
 add_subdirectory(ui)
 add_subdirectory(tone3000)
 add_subdirectory(plugins/Rig)
+if(ROUGHSTOMP_BUILD_TESTS)
+    add_subdirectory(plugins/Rig/tests)
+endif()
 
 # Offline tools
 if(ROUGHSTOMP_BUILD_TOOLS)

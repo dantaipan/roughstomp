@@ -55,6 +55,7 @@ RigEditor::RigEditor (RigProcessor& p)
       loopMix    (p.apvts, ParamIDs::loopMix,    "Mix"),
       output     (p.apvts, ParamIDs::output,     "Level"),
       gateOnAttachment (p.apvts, ParamIDs::gateOn.getParamID(), gateOnButton),
+      midiMap (p, board),
       tunerAttachment (p.apvts, ParamIDs::tuner.getParamID(), tunerButton),
       presetBar (p.getPresets()),
       loopOnAttachment (p.apvts, ParamIDs::loopOn.getParamID(), loopOnButton),
@@ -137,6 +138,24 @@ RigEditor::RigEditor (RigProcessor& p)
 
 
 
+    // MIDI: every control MIDI can move is tagged with its parameter, for the map
+    midimap::tag (input, ParamIDs::input);
+    midimap::tag (gateThreshold, ParamIDs::gateThreshold);
+    midimap::tag (gateOnButton, ParamIDs::gateOn);
+    midimap::tag (output, ParamIDs::output);
+    midimap::tag (loopOnButton, ParamIDs::loopOn);
+    midimap::tag (loopSend, ParamIDs::loopSend);
+    midimap::tag (loopReturn, ParamIDs::loopReturn);
+    midimap::tag (loopMix, ParamIDs::loopMix);
+    midimap::tag (tunerButton, ParamIDs::tuner);
+    midiButton.setClickingTogglesState (false);
+    midiButton.setColour (juce::TextButton::buttonOnColourId, fam::amber.withAlpha (0.45f));
+    midiButton.setTooltip ("MIDI map: click a control, then move a knob, fader or footswitch on your MIDI controller. "
+                           "Program changes pick presets, in the menu's order.");
+    midiButton.onClick = [this] { showMidiMap (! midiMap.isVisible()); };
+    board.addAndMakeVisible (midiButton);
+    board.addChildComponent (midiMap);
+
     // Everything is laid out once at the design size on the board, which is
     // scaled to fit the window (aspect ratio fixed)
     board.onPaint = [this] (juce::Graphics& g) { paintBoard (g); };
@@ -177,6 +196,14 @@ void RigEditor::timerCallback()
     for (auto& s : preSlots)  s->refresh();
     for (auto& s : loopSlots) s->refresh();
     refreshPanels();
+}
+
+void RigEditor::showMidiMap (bool on)
+{
+    midiMap.setVisible (on);
+    if (on)
+        midiMap.toFront (false);   // over everything, TONE3000's browser too
+    midiButton.setToggleState (on, juce::dontSendNotification);
 }
 
 void RigEditor::refreshPanels()
@@ -344,8 +371,13 @@ void RigEditor::layoutBoard()
         auto viewArea = header.removeFromRight (150).withSizeKeepingCentre (150, headerControlHeight);
         pedalsViewButton.setBounds (viewArea.removeFromLeft (75));
         slidersViewButton.setBounds (viewArea);
+        header.removeFromRight (12);
+        midiButton.setBounds (header.removeFromRight (64).withSizeKeepingCentre (64, headerControlHeight));
         presetBar.setBounds (header.withSizeKeepingCentre (420, headerControlHeight));
     }
+    midiMap.setBounds (board.getLocalBounds());
+    midiMap.setPassThrough (midiButton.getBounds());
+    midiMap.setHintArea (presetBar.getBounds().withLeft (margin + 140).withRight (midiButton.getX() - 12));   // clear of the wordmark
     b = b.reduced (margin, 0).withTrimmedBottom (margin);
 
     // The Input-to-Output row on top (where the tuner shows, as in RoughTrack),
